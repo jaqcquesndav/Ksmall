@@ -1,29 +1,29 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, Card, Chip, Divider, DataTable } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../../navigation/types';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/common/AppHeader';
 import { inventoryMockData } from '../../data/mockData';
+import { MainStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<MainStackParamList, 'TransactionDetails'>;
+type TransactionDetailsRouteProp = RouteProp<MainStackParamList, 'TransactionDetails'>;
 
-const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { t } = useTranslation();
+const TransactionDetailsScreen: React.FC = () => {
+  const route = useRoute<TransactionDetailsRouteProp>();
+  const navigation = useNavigation();
   const { transactionId } = route.params;
-  
+
   // Find the transaction in mock data
   const transaction = inventoryMockData.transactions.find(t => t.id === transactionId);
-  
+
   if (!transaction) {
     return (
       <View style={styles.container}>
-        <AppHeader title={t('transaction_details')} showBack />
+        <AppHeader title="Transaction Details" showBack />
         <View style={styles.notFoundContainer}>
-          <Text>{t('transaction_not_found')}</Text>
+          <Text>Transaction not found</Text>
           <Button mode="contained" style={styles.button} onPress={() => navigation.goBack()}>
-            {t('go_back')}
+            Go Back
           </Button>
         </View>
       </View>
@@ -56,7 +56,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <AppHeader title={t('transaction_details')} showBack />
+      <AppHeader title="Transaction Details" showBack />
       
       <ScrollView style={styles.scrollView}>
         <Card style={styles.card}>
@@ -71,18 +71,18 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 style={[styles.typeChip, { backgroundColor: getTypeColor(transaction.type) + '20' }]}
                 textStyle={{ color: getTypeColor(transaction.type) }}
               >
-                {t(transaction.type)}
+                {transaction.type}
               </Chip>
             </View>
             
             <View style={styles.statusSection}>
-              <Text style={styles.statusLabel}>{t('status')}</Text>
+              <Text style={styles.statusLabel}>Status</Text>
               <Chip
                 mode="flat"
                 style={[styles.statusChip, { backgroundColor: getStatusColor(transaction.status) + '20' }]}
                 textStyle={{ color: getStatusColor(transaction.status) }}
               >
-                {t(transaction.status)}
+                {transaction.status}
               </Chip>
             </View>
             
@@ -91,7 +91,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Divider style={styles.divider} />
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>
-                    {transaction.type === 'purchase' ? t('supplier') : t('customer')}
+                    {transaction.type === 'purchase' ? 'Supplier' : 'Customer'}
                   </Text>
                   <Text style={styles.contactName}>
                     {transaction.type === 'purchase' ? transaction.supplier : transaction.customer}
@@ -103,13 +103,13 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <Divider style={styles.divider} />
             
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{t('items')}</Text>
+              <Text style={styles.sectionTitle}>Items</Text>
               <DataTable>
                 <DataTable.Header>
-                  <DataTable.Title>{t('product')}</DataTable.Title>
-                  <DataTable.Title numeric>{t('quantity')}</DataTable.Title>
-                  <DataTable.Title numeric>{t('unit_price')}</DataTable.Title>
-                  <DataTable.Title numeric>{t('total')}</DataTable.Title>
+                  <DataTable.Title>Product</DataTable.Title>
+                  <DataTable.Title numeric>Quantity</DataTable.Title>
+                  <DataTable.Title numeric>Unit Price</DataTable.Title>
+                  <DataTable.Title numeric>Total</DataTable.Title>
                 </DataTable.Header>
                 
                 {itemsWithDetails.map((item, index) => (
@@ -131,7 +131,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 
                 {transaction.totalAmount > 0 && (
                   <DataTable.Row style={styles.totalRow}>
-                    <DataTable.Cell>{t('total')}</DataTable.Cell>
+                    <DataTable.Cell>Total</DataTable.Cell>
                     <DataTable.Cell numeric>{''}</DataTable.Cell>
                     <DataTable.Cell numeric>{''}</DataTable.Cell>
                     <DataTable.Cell numeric>
@@ -146,7 +146,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <>
                 <Divider style={styles.divider} />
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>{t('notes')}</Text>
+                  <Text style={styles.sectionTitle}>Notes</Text>
                   <Text style={styles.notes}>{transaction.notes}</Text>
                 </View>
               </>
@@ -161,7 +161,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             onPress={() => {}} 
             style={[styles.button, styles.primaryButton]}
           >
-            {t('edit')}
+            Edit
           </Button>
           <Button 
             mode="outlined" 
@@ -169,7 +169,7 @@ const TransactionDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             onPress={() => {}} 
             style={styles.button}
           >
-            {t('print')}
+            Print
           </Button>
         </View>
       </ScrollView>

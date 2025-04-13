@@ -4,34 +4,31 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
  * Type definitions for navigation
  */
 
+// Root navigator param list combining all stacks
+export type RootStackParamList = {
+  Auth: undefined;
+  Main: undefined;
+};
+
 // Authentication stack param list
 export type AuthStackParamList = {
   Onboarding: undefined;
   Login: undefined;
-  Signup: undefined;
+  Register: undefined;
   ForgotPassword: undefined;
   TwoFactorAuth: { email: string };
 };
 
-// Main tab navigator param list
-export type MainTabParamList = {
-  Dashboard: undefined;
-  Chat: undefined;
-  Accounting: undefined;
-  Inventory: undefined;
-};
-
-export type TabParamList = MainTabParamList;
-
 // Main stack param list
 export type MainStackParamList = {
-  Tabs: {
-    screen?: string;
-  };
-  // Settings screens
-  Settings: undefined;
+  MainTabs: undefined; // Important: C'est "MainTabs", pas "Tabs"
+  Notifications: undefined;
   UserProfile: undefined;
   BusinessProfile: undefined;
+  Settings: undefined;
+  Chat: { conversationId?: string; newConversation?: boolean };
+  
+  // Settings screens
   UserManagement: undefined;
   PaymentMethods: undefined;
   ThemeSettings: undefined;
@@ -40,20 +37,26 @@ export type MainStackParamList = {
   PermissionSettings: undefined;
   HelpSupport: undefined;
   About: undefined;
-  // Notification screen
-  Notifications: undefined;
+  
   // Accounting screens
   JournalEntryDetails: { entryId: string };
+  AddJournalEntry: undefined | { draftId?: string };
+  AccountDetails: { accountId: string };
+  
   // Inventory screens
   ProductDetails: { productId: string };
   TransactionDetails: { transactionId: string };
-  AddProduct: undefined;
+  AddProduct: undefined | { productId?: string; categoryId?: string };
+  StockAdjustment: { productId: string };
 };
 
-// Root navigator param list combining all stacks
-export type RootStackParamList = {
-  Auth: undefined;
-  Main: undefined;
+// Main tab navigator param list
+export type MainTabsParamList = {
+  Dashboard: undefined;
+  Chat: undefined;
+  Accounting: undefined;
+  Inventory: undefined;
+  Settings: undefined;
 };
 
 // Navigation prop type for components
@@ -67,9 +70,9 @@ export type LoginScreenProps = NativeStackScreenProps<
   'Login'
 >;
 
-export type SignupScreenProps = NativeStackScreenProps<
+export type RegisterScreenProps = NativeStackScreenProps<
   AuthStackParamList,
-  'Signup'
+  'Register'
 >;
 
 export type ForgotPasswordScreenProps = NativeStackScreenProps<

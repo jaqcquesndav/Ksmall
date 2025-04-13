@@ -9,7 +9,6 @@ import {
   Platform
 } from 'react-native';
 import {
-  Appbar,
   TextInput,
   Button,
   SegmentedButtons,
@@ -18,15 +17,15 @@ import {
   useTheme,
   List,
   DataTable,
-  Menu,
   Divider,
-  IconButton
+  IconButton,
+  Menu
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
 import logger from '../../utils/logger';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import AppHeader from '../../components/common/AppHeader';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../navigation/types';
 
@@ -495,11 +494,10 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => navigation.goBack()} />
-        <Appbar.Content title={t('business_profile')} />
-        <Appbar.Action icon="check" onPress={handleSave} disabled={loading} />
-      </Appbar.Header>
+      <AppHeader 
+        title={t('business_profile')}
+        showBack
+      />
       
       <SegmentedButtons
         value={currentTab}

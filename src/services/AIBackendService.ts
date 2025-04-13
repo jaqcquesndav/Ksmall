@@ -1,152 +1,142 @@
-import { generateUniqueId } from '../utils/helpers';
+import { Message } from '../components/chat/DynamicResponseBuilder';
+import { CHAT_MODES } from '../components/chat/ModeSelector';
+import { getMockResponseForMessage } from './MockResponseService';
+import logger from '../utils/logger';
 
-// Types pour les requêtes et réponses
-interface UserInput {
-  text: string;
-  attachments?: any[];
-  mode: string;
-}
-
-interface ValidationRequest {
-  id: string;
-  type: string;
-  data: any;
-}
-
-// Données de démonstration pour le compte jacquesndav@gmail.com
-const demoAccountResponses = {
-  // Réponse standard basée sur le mode
-  regularChat: {
-    content: "Bonjour ! Comment puis-je vous aider aujourd'hui avec votre entreprise ?",
-    type: "regular_chat",
-  },
-  
-  accounting: {
-    content: "Voici une écriture comptable basée sur votre demande :",
-    type: "journal_entry",
-    data: {
-      date: new Date().toISOString(),
-      reference: "JE-2023-042",
-      description: "Enregistrement de vente de marchandises",
-      lines: [
-        { accountCode: "411000", description: "Clients", debit: 1200, credit: 0, taxCode: "" },
-        { accountCode: "707000", description: "Vente de marchandises", debit: 0, credit: 1000, taxCode: "TVA" },
-        { accountCode: "445711", description: "TVA collectée", debit: 0, credit: 200, taxCode: "" }
-      ]
-    }
-  },
-  
-  inventory: {
-    content: "Voici l'inventaire des produits :",
-    type: "inventory",
-    data: {
-      title: "Inventaire des produits",
-      items: [
-        { id: "1", sku: "PROD001", name: "Ordinateur portable", quantity: 15, cost: 450, price: 799 },
-        { id: "2", sku: "PROD002", name: "Écran 24\"", quantity: 28, cost: 120, price: 249 },
-        { id: "3", sku: "PROD003", name: "Clavier sans fil", quantity: 42, cost: 25, price: 49.99 },
-        { id: "4", sku: "PROD004", name: "Souris ergonomique", quantity: 36, cost: 15, price: 34.99 }
-      ],
-      totalValue: 13550,
-      summary: "Valeur totale de l'inventaire: 13 550 €"
-    }
-  },
-  
-  analysis: {
-    content: "Voici l'analyse financière demandée :",
-    type: "analysis",
-    data: {
-      title: "Analyse des ventes du dernier trimestre",
-      kpis: [
-        { label: "Chiffre d'affaires", value: "42 500 €", change: "+12.5%" },
-        { label: "Marge brute", value: "18 200 €", change: "+8.2%" },
-        { label: "Clients actifs", value: "127", change: "+15%" }
-      ],
-      chart: {
-        labels: ["Janvier", "Février", "Mars"],
-        datasets: [
-          {
-            data: [12500, 14200, 15800],
-            label: "Ventes",
-            color: "#6200EE"
-          }
-        ]
-      },
-      conclusion: "Les ventes sont en progression constante ce trimestre avec une augmentation notable des clients actifs."
-    }
-  },
-  
-  markdown: {
-    content: "# Rapport de performance\n\n## Points clés\n\n* **Ventes**: Augmentation de 12.5%\n* **Clients**: 127 clients actifs (+15%)\n* **Rentabilité**: Amélioration de la marge brute\n\n> Les performances sont globalement positives.",
-    format: "markdown"
-  },
-  
-  code: {
-    content: "function calculerTVA(montantHT, tauxTVA = 20) {\n  const montantTVA = montantHT * tauxTVA / 100;\n  return {\n    montantHT,\n    montantTVA,\n    montantTTC: montantHT + montantTVA\n  };\n}",
-    format: "code",
-    language: "javascript"
-  }
-};
-
+/**
+ * Service pour interagir avec l'IA backend
+ */
 class AIBackendService {
-  initialize() {
-      throw new Error('Method not implemented.');
+  /**
+   * Traite un message utilisateur et génère une réponse
+   */
+  async processUserInput(params: { text: string; attachments?: Array<{ id: string; name: string; type: string; url: string }>; mode: CHAT_MODES }): Promise<any> {
+    try {
+      logger.debug('Traitement du message utilisateur', params);
+
+      // Extraire les mots-clés pour déterminer le type de graphique
+      const keywords = this.extractKeywords(params.text);
+
+      // Pour la démonstration, utilisons notre service de mock avec des messages plus concis
+      const mockResponse = await getMockResponseForMessage(params.text, params.mode);
+
+      // Pour le mode ANALYSIS, analyser les mots-clés pour déterminer le type de graphique
+      if (params.mode === CHAT_MODES.ANALYSIS && mockResponse.analysisData) {
+        mockResponse.analysisData = this.enhanceAnalysisWithKeywords(mockResponse.analysisData, keywords);
+      }
+
+      return {
+        type: mockResponse.messageType,
+        content: mockResponse.content,
+        data: mockResponse.journalData || mockResponse.inventoryData || mockResponse.analysisData,
+        format: mockResponse.messageType === 'markdown' ? 'markdown' :
+          mockResponse.messageType === 'code' ? 'code' : null,
+        language: mockResponse.codeLanguage,
+        status: mockResponse.status
+      };
+    } catch (error) {
+      logger.error('Erreur lors du traitement du message utilisateur', error);
+      throw error;
+    }
   }
-  // Variable pour stocker l'utilisateur actuel
-  private currentUser: any = null;
-  
-  // Méthode pour définir l'utilisateur
-  setCurrentUser(user: any) {
-    this.currentUser = user;
+
+  /**
+   * Extraire les mots-clés pour déterminer le type de graphique
+   */
+  private extractKeywords(text: string): string[] {
+    const keywords = [];
+
+    // Rechercher des types de graphiques spécifiques
+    if (/camembert|pie|répartition|distribution|proportion/i.test(text)) {
+      keywords.push('pie');
+    }
+    if (/bar(re)?s|histogramme|comparaison|comparer/i.test(text)) {
+      keywords.push('bar');
+    }
+    if (/ligne|courbe|tendance|évolution|progression|temps/i.test(text)) {
+      keywords.push('line');
+    }
+
+    // Rechercher des périodes spécifiques
+    if (/jour|journalier|quotidien/i.test(text)) {
+      keywords.push('daily');
+    }
+    if (/semaine|hebdomadaire/i.test(text)) {
+      keywords.push('weekly');
+    }
+    if (/mois|mensuel/i.test(text)) {
+      keywords.push('monthly');
+    }
+    if (/trimestre|trimestriel/i.test(text)) {
+      keywords.push('quarterly');
+    }
+    if (/an(née)?|annuel/i.test(text)) {
+      keywords.push('yearly');
+    }
+
+    // Rechercher des sujets spécifiques
+    if (/vente|chiffre d'affaires|revenu|ca/i.test(text)) {
+      keywords.push('sales');
+    }
+    if (/produit|article|stock/i.test(text)) {
+      keywords.push('product');
+    }
+    if (/client|acheteur|consommateur/i.test(text)) {
+      keywords.push('customer');
+    }
+
+    return keywords;
   }
-  
-  // Remplacer la référence à useAuth() par une propriété de classe
-  private isDemo() {
-    return this.currentUser?.isDemo === true;
-  }
-  
-  async processUserInput(input: UserInput): Promise<any> {
-    // Simuler un délai de traitement
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Si c'est le compte de démo, retourner des réponses spécifiques selon le mode
-    if (this.isDemo()) {
-      console.log('Using demo account responses for:', input.mode);
-      
-      // Sélectionner le type de réponse en fonction du mode
-      switch(input.mode) {
-        case 'accounting':
-          return demoAccountResponses.accounting;
-        case 'inventory':
-          return demoAccountResponses.inventory;
-        case 'analysis':
-          return demoAccountResponses.analysis;
-        default:
-          // Détecter des mots-clés dans le texte pour choisir le type de réponse
-          const text = input.text.toLowerCase();
-          if (text.includes('code') || text.includes('fonction') || text.includes('script')) {
-            return demoAccountResponses.code;
-          }
-          if (text.includes('rapport') || text.includes('analyse')) {
-            return demoAccountResponses.markdown;
-          }
-          return demoAccountResponses.regularChat;
+
+  /**
+   * Améliorer l'analyse avec les mots-clés extraits
+   */
+  private enhanceAnalysisWithKeywords(analysisData: any, keywords: string[]): any {
+    // Si pas de mots-clés spécifiques, retourner les données telles quelles
+    if (keywords.length === 0) return analysisData;
+
+    // Personnaliser le titre en fonction des mots-clés
+    if (keywords.includes('sales')) {
+      if (keywords.includes('monthly')) {
+        analysisData.title = "Évolution mensuelle des ventes";
+      } else if (keywords.includes('yearly')) {
+        analysisData.title = "Comparaison annuelle des ventes";
+      }
+    } else if (keywords.includes('product')) {
+      if (keywords.includes('pie')) {
+        analysisData.title = "Répartition des produits en stock";
       }
     }
-    
-    // Pour les utilisateurs non-démo, simuler une réponse générique
-    return {
-      content: "Je vous remercie pour votre message. Cette fonctionnalité nécessite une connexion au backend. Veuillez utiliser le compte de démonstration pour tester les fonctionnalités avancées.",
-      type: "regular_chat"
-    };
+
+    // Personnaliser le type de graphique en fonction des mots-clés
+    if (analysisData.charts && analysisData.charts.length > 0) {
+      if (keywords.includes('line')) {
+        analysisData.charts[0].type = 'line';
+      } else if (keywords.includes('bar')) {
+        analysisData.charts[0].type = 'bar';
+      } else if (keywords.includes('pie')) {
+        analysisData.charts[0].type = 'pie';
+      }
+    }
+
+    return analysisData;
   }
 
-  async validateEntry(validation: ValidationRequest): Promise<boolean> {
-    // Simuler un délai
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Toujours retourner true pour la démo
-    return true;
+  /**
+   * Valide une entrée (écriture comptable ou inventaire)
+   */
+  async validateEntry(params: { id: string; type: 'journal_entry' | 'inventory'; data: any }): Promise<void> {
+    try {
+      logger.debug(`Validation de l'entrée ${params.type}`, params);
+      // En production, ceci serait un appel API réel
+      // return await api.post('/ai/validate', params);
+
+      // Pour la démonstration, simulons une réponse réussie
+      return Promise.resolve();
+    } catch (error) {
+      logger.error(`Erreur lors de la validation de l'entrée ${params.type}`, error);
+      throw error;
+    }
   }
 }
 

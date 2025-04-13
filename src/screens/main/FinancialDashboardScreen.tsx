@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, Card, List, Avatar, Portal, Modal, IconButton } from 'react-native-paper';
+import { Text, Button, Card, List, Avatar, Portal, Modal, IconButton, ProgressBar } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -16,6 +16,15 @@ const FinancialDashboardScreen = () => {
   const [loading, setLoading] = useState(true);
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
   const [financialData, setFinancialData] = useState<any>(null);
+  const [subscriptionData, setSubscriptionData] = useState({
+    isActive: true,
+    expiresAt: '2023-12-31',
+    plan: 'Professional',
+    monthlyTokens: 1000000,
+    usedTokens: 236540,
+    remainingTokens: 763460,
+    creditScore: 85,
+  });
 
   // Load mock data when component mounts
   useEffect(() => {
@@ -58,6 +67,75 @@ const FinancialDashboardScreen = () => {
       />
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Subscription Status Card */}
+        <Card style={styles.card}>
+          <Card.Title 
+            title={t('subscription_status')} 
+            right={(props) => (
+              <Button 
+                mode="text"
+                onPress={() => navigation.navigate('PaymentMethods')}
+              >
+                {t('manage')}
+              </Button>
+            )}
+          />
+          <Card.Content>
+            <View style={styles.subscriptionRow}>
+              <Text style={styles.subscriptionLabel}>{t('status')}</Text>
+              <View style={[
+                styles.statusBadge, 
+                {backgroundColor: subscriptionData.isActive ? '#E8F5E9' : '#FFEBEE'}
+              ]}>
+                <Text style={{
+                  color: subscriptionData.isActive ? '#2E7D32' : '#C62828',
+                  fontWeight: 'bold'
+                }}>
+                  {subscriptionData.isActive ? t('active') : t('inactive')}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.subscriptionRow}>
+              <Text style={styles.subscriptionLabel}>{t('plan')}</Text>
+              <Text style={styles.subscriptionValue}>{subscriptionData.plan}</Text>
+            </View>
+            
+            <View style={styles.subscriptionRow}>
+              <Text style={styles.subscriptionLabel}>{t('expires')}</Text>
+              <Text style={styles.subscriptionValue}>{subscriptionData.expiresAt}</Text>
+            </View>
+            
+            <View style={styles.divider} />
+            
+            <Text style={styles.sectionTitle}>{t('token_usage')}</Text>
+            
+            <ProgressBar 
+              progress={subscriptionData.usedTokens / subscriptionData.monthlyTokens} 
+              color="#6200EE" 
+              style={styles.progressBar}
+            />
+            
+            <View style={styles.tokenRow}>
+              <Text style={styles.tokenText}>{t('used')}: {subscriptionData.usedTokens.toLocaleString()}</Text>
+              <Text style={styles.tokenText}>{t('remaining')}: {subscriptionData.remainingTokens.toLocaleString()}</Text>
+            </View>
+            
+            <View style={styles.divider} />
+            
+            <View style={styles.creditScoreContainer}>
+              <Text style={styles.creditScoreLabel}>{t('credit_score')}</Text>
+              <View style={styles.creditScoreCircle}>
+                <Text style={styles.creditScoreValue}>{subscriptionData.creditScore}</Text>
+              </View>
+              <Text style={styles.creditScoreDescription}>
+                {subscriptionData.creditScore > 80 ? t('excellent_credit') : 
+                 subscriptionData.creditScore > 60 ? t('good_credit') : t('fair_credit')}
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+        
         {/* Account Balance Card */}
         <Card style={styles.card}>
           <Card.Title 
@@ -356,6 +434,70 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     marginTop: 8,
+  },
+  subscriptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  subscriptionLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  subscriptionValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  tokenRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tokenText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  creditScoreContainer: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  creditScoreLabel: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  creditScoreCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#6200EE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  creditScoreValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  creditScoreDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
   },
 });
 

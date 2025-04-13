@@ -1,16 +1,17 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Card, Text, Chip, IconButton, useTheme } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Share } from 'react-native';
+import { Card, IconButton, Badge, Divider, useTheme, Button } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import JournalEntryCard from '../accounting/JournalEntryCard';
-import InventoryItemList from '../inventory/InventoryItemList';
-import CodeBlock from '../common/CodeBlock';
-import MarkdownRenderer from '../common/MarkdownRenderer';
-import LatexRenderer from '../common/LatexRenderer';
-import AnalysisCard from '../analytics/AnalysisCard';
-import { JournalEntry } from '../accounting/DynamicJournalEntryWidget';
+import Markdown from 'react-native-markdown-display';
 import { formatTime } from '../../utils/formatters';
+import JournalEntryWidget from '../accounting/DynamicJournalEntryWidget';
+import InventoryWidget from '../inventory/InventoryWidget';
+import AnalysisWidget from '../analytics/AnalysisWidget'; // Verify the file exists or correct the path
+import CodeBlock from '../common/CodeBlock';
+import logger from '../../utils/logger';
+import { CHAT_MODES } from './ModeSelector';
 
+// Export pour utilisation externe
 export enum MESSAGE_TYPES {
   REGULAR_CHAT = 'regular_chat',
   JOURNAL_ENTRY = 'journal_entry',
@@ -18,7 +19,7 @@ export enum MESSAGE_TYPES {
   ANALYSIS = 'analysis',
   MARKDOWN = 'markdown',
   LATEX = 'latex',
-  CODE = 'code',
+  CODE = 'code'
 }
 
 export interface MessageAttachment {
@@ -28,13 +29,6 @@ export interface MessageAttachment {
   url: string;
 }
 
-export interface InventoryData {
-  title?: string;
-  items: any[];
-  totalValue?: number;
-  summary?: string;
-}
-
 export interface Message {
   id: string;
   content: string;
@@ -42,11 +36,22 @@ export interface Message {
   isUser: boolean;
   timestamp: string;
   attachments?: MessageAttachment[];
-  journalData?: JournalEntry;
-  inventoryData?: InventoryData;
+  status?: 'pending' | 'validated' | 'error';
+  journalData?: any;
+  inventoryData?: any;
   analysisData?: any;
   codeLanguage?: string;
-  status?: 'pending' | 'validated' | 'rejected';
+  userReaction?: 'like' | 'dislike' | null;
+}
+
+export interface InventoryData {
+  items: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalValue: number;
 }
 
 interface DynamicResponseBuilderProps {
@@ -55,6 +60,7 @@ interface DynamicResponseBuilderProps {
   onEdit?: (message: Message) => void;
   onDelete?: (message: Message) => void;
   onAttach?: (message: Message) => void;
+  currentMode?: CHAT_MODES;
 }
 
 const DynamicResponseBuilder: React.FC<DynamicResponseBuilderProps> = ({
@@ -63,187 +69,336 @@ const DynamicResponseBuilder: React.FC<DynamicResponseBuilderProps> = ({
   onEdit,
   onDelete,
   onAttach,
+  currentMode = CHAT_MODES.REGULAR
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const [liked, setLiked] = useState<boolean | null>(message.userReaction === 'like');
+  const [disliked, setDisliked] = useState<boolean | null>(message.userReaction === 'dislike');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedData, setEditedData] = useState<any>(null);
 
-  const renderAttachments = () => {
-    if (!message.attachments || message.attachments.length === 0) return null;
-
-    return (
-      <View style={styles.attachmentsContainer}>
-        {message.attachments.map((att) => (
-          <Chip
-            key={att.id}
-            icon={att.type === 'image' ? 'image' : 'file-document'}
-            style={styles.attachmentChip}
-          >
-            {att.name}
-          </Chip>
-        ))}
-      </View>
-    );
+  const handleCopyToClipboard = async () => {
+    try {
+      await Share.share({
+        message: message.content
+      });
+    } catch (error) {
+      logger.error('Error copying message', error);
+    }
+  };
+  
+  const handleLike = () => {
+    setLiked(true);
+    setDisliked(false);
+    // Ici, vous pouvez envoyer la réaction à votre backend
+  };
+  
+  const handleDislike = () => {
+    setLiked(false);
+    setDisliked(true);
+    // Ici, vous pouvez envoyer la réaction à votre backend
   };
 
-  const renderMessageContent = () => {
+  // Permettre la modification des données avant validation
+  const handleEdit = () => {
+    if (message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY) {
+      setEditedData({...message.journalData});
+      setIsEditing(true);
+    } else if (message.messageType === MESSAGE_TYPES.INVENTORY) {
+      setEditedData({...message.inventoryData});
+      setIsEditing(true);
+    } else {
+      onEdit?.(message);
+    }
+  };
+
+  const saveEditedData = () => {
+    const updatedMessage = {...message};
+    
+    if (message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY) {
+      updatedMessage.journalData = editedData;
+    } else if (message.messageType === MESSAGE_TYPES.INVENTORY) {
+      updatedMessage.inventoryData = editedData;
+    }
+    
+    onEdit?.(updatedMessage);
+    setIsEditing(false);
+    setEditedData(null);
+  };
+
+  // Rendre le contenu du message en fonction du type
+  const renderContent = () => {
+    if (isEditing) {
+      if (message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY) {
+        return (
+          <>
+            <JournalEntryWidget 
+              data={editedData}
+              status="pending"
+              isEditing={true}
+              onEditChange={(data) => setEditedData(data)}
+            />
+            <View style={styles.editActionButtons}>
+              <Button
+                mode="outlined"
+                onPress={() => setIsEditing(false)}
+                style={styles.editButton}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                mode="contained"
+                onPress={saveEditedData}
+                style={styles.editButton}
+              >
+                {t('save_changes')}
+              </Button>
+            </View>
+          </>
+        );
+      } else if (message.messageType === MESSAGE_TYPES.INVENTORY) {
+        return (
+          <>
+            <InventoryWidget 
+              data={editedData}
+              status="pending"
+              isEditing={true}
+              onEditChange={(data) => setEditedData(data)}
+            />
+            <View style={styles.editActionButtons}>
+              <Button
+                mode="outlined"
+                onPress={() => setIsEditing(false)}
+                style={styles.editButton}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                mode="contained"
+                onPress={saveEditedData}
+                style={styles.editButton}
+              >
+                {t('save_changes')}
+              </Button>
+            </View>
+          </>
+        );
+      }
+    }
+
     switch (message.messageType) {
       case MESSAGE_TYPES.JOURNAL_ENTRY:
         return (
           <>
-            {message.content && <Text style={styles.regularText}>{message.content}</Text>}
-            {message.journalData && (
-              <JournalEntryCard
-                journalEntry={message.journalData}
-                status={message.status}
-              />
-            )}
-            {message.status === 'pending' && onValidate && (
-              <View style={styles.actionsContainer}>
-                <IconButton
-                  icon="check-circle"
-                  size={20}
-                  onPress={() => onValidate(message)}
-                  mode="contained"
-                  style={styles.actionButton}
-                />
-              </View>
+            <JournalEntryWidget data={message.journalData} status={message.status} onValidate={() => onValidate?.(message)} />
+            {message.status === 'pending' && (
+              <Text style={styles.editHintText}>{t('edit_before_validate')}</Text>
             )}
           </>
         );
+      
       case MESSAGE_TYPES.INVENTORY:
         return (
           <>
-            {message.content && <Text style={styles.regularText}>{message.content}</Text>}
-            {message.inventoryData && (
-              <InventoryItemList data={message.inventoryData} />
+            <InventoryWidget data={message.inventoryData} status={message.status} onValidate={() => onValidate?.(message)} />
+            {message.status === 'pending' && (
+              <Text style={styles.editHintText}>{t('edit_before_validate')}</Text>
             )}
           </>
         );
+      
       case MESSAGE_TYPES.ANALYSIS:
-        return (
-          <>
-            {message.content && <Text style={styles.regularText}>{message.content}</Text>}
-            {message.analysisData && (
-              <AnalysisCard analysisData={message.analysisData} />
-            )}
-          </>
-        );
+        return <AnalysisWidget data={message.analysisData} />;
+      
       case MESSAGE_TYPES.MARKDOWN:
-        return <MarkdownRenderer content={message.content} />;
-      case MESSAGE_TYPES.LATEX:
-        return <LatexRenderer content={message.content} />;
+        return <Markdown>{message.content}</Markdown>;
+      
       case MESSAGE_TYPES.CODE:
         return <CodeBlock code={message.content} language={message.codeLanguage || 'javascript'} />;
-      case MESSAGE_TYPES.REGULAR_CHAT:
+      
+      case MESSAGE_TYPES.LATEX:
+        // Implémentation à venir pour LaTeX
+        return <Text>{message.content}</Text>;
+      
       default:
-        return <Text style={styles.regularText}>{message.content}</Text>;
+        // Message régulier
+        return <Text style={styles.messageText}>{message.content}</Text>;
     }
   };
 
-  const messageContainerStyle = message.isUser
-    ? [styles.messageContainer, styles.userMessage]
-    : [styles.messageContainer, styles.aiMessage];
+  // Rendre les actions disponibles en fonction du mode et du type de message
+  const renderActions = () => {
+    const isAccountingOrInventory = currentMode === CHAT_MODES.ACCOUNTING || currentMode === CHAT_MODES.INVENTORY;
+    const isRegularOrAnalysis = currentMode === CHAT_MODES.REGULAR || currentMode === CHAT_MODES.ANALYSIS;
+    
+    if (message.isUser) {
+      // Pas d'actions pour les messages utilisateur
+      return null;
+    }
 
-  return (
-    <View style={messageContainerStyle}>
-      <Card style={styles.card}>
-        <Card.Content>
-          {renderMessageContent()}
-          {renderAttachments()}
-        </Card.Content>
-      </Card>
-      
-      <Text style={styles.timestamp}>
-        {formatTime(message.timestamp)}
-      </Text>
-      
-      {!message.isUser && (onEdit || onDelete || onAttach) && (
-        <View style={styles.actionIcons}>
-          {onEdit && (
+    return (
+      <View style={styles.actionsContainer}>
+        {isAccountingOrInventory && (
+          <>
             <IconButton
               icon="pencil"
-              size={16}
-              onPress={() => onEdit(message)}
-              containerColor={theme.colors.surfaceVariant}
-              iconColor={theme.colors.primary}
-              style={styles.iconButton}
+              size={18}
+              style={styles.actionButton}
+              onPress={handleEdit}
+              disabled={message.status === 'validated' || isEditing}
             />
-          )}
-          {onDelete && (
             <IconButton
               icon="delete"
-              size={16}
-              onPress={() => onDelete(message)}
-              containerColor={theme.colors.surfaceVariant}
-              iconColor={theme.colors.error}
-              style={styles.iconButton}
+              size={18}
+              style={styles.actionButton}
+              onPress={() => onDelete?.(message)}
+              disabled={isEditing}
             />
-          )}
-          {onAttach && (
             <IconButton
               icon="paperclip"
-              size={16}
-              onPress={() => onAttach(message)}
-              containerColor={theme.colors.surfaceVariant}
-              iconColor={theme.colors.primary}
-              style={styles.iconButton}
+              size={18}
+              style={styles.actionButton}
+              onPress={() => onAttach?.(message)}
+              disabled={isEditing}
             />
-          )}
+          </>
+        )}
+        
+        {isRegularOrAnalysis && (
+          <>
+            <IconButton
+              icon={liked ? "thumb-up" : "thumb-up-outline"}
+              size={18}
+              style={styles.actionButton}
+              onPress={handleLike}
+              iconColor={liked ? theme.colors.primary : undefined}
+            />
+            <IconButton
+              icon={disliked ? "thumb-down" : "thumb-down-outline"}
+              size={18}
+              style={styles.actionButton}
+              onPress={handleDislike}
+              iconColor={disliked ? theme.colors.error : undefined}
+            />
+            <IconButton
+              icon="content-copy"
+              size={18}
+              style={styles.actionButton}
+              onPress={handleCopyToClipboard}
+            />
+          </>
+        )}
+      </View>
+    );
+  };
+
+  // Calculer le style du message en fonction de l'expéditeur
+  const messageContainerStyle = [
+    styles.messageContainer,
+    message.isUser ? styles.userMessage : styles.assistantMessage
+  ];
+
+  return (
+    <Card style={messageContainerStyle}>
+      <Card.Content>
+        <View style={styles.messageHeader}>
+          <Text style={styles.messageSender}>
+            {message.isUser ? t('you') : 'Adha'}
+          </Text>
+          
+          {renderActions()}
+          
+          <Text style={styles.messageTime}>
+            {formatTime(message.timestamp)}
+          </Text>
         </View>
-      )}
-    </View>
+        
+        <View style={styles.messageBody}>
+          {renderContent()}
+        </View>
+        
+        {message.attachments && message.attachments.length > 0 && (
+          <View style={styles.attachmentsContainer}>
+            {message.attachments.map(attachment => (
+              <Badge 
+                key={attachment.id}
+                style={styles.attachmentBadge}
+              >
+                {attachment.name}
+              </Badge>
+            ))}
+          </View>
+        )}
+      </Card.Content>
+    </Card>
   );
 };
 
 const styles = StyleSheet.create({
   messageContainer: {
-    marginVertical: 4,
-    maxWidth: '80%',
+    marginVertical: 8,
+    borderRadius: 12,
+    elevation: 1,
   },
   userMessage: {
-    alignSelf: 'flex-end',
+    marginLeft: 40,
+    backgroundColor: '#E3F2FD',
   },
-  aiMessage: {
-    alignSelf: 'flex-start',
+  assistantMessage: {
+    marginRight: 40,
+    backgroundColor: '#FFFFFF',
   },
-  card: {
-    borderRadius: 12,
+  messageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  regularText: {
+  messageSender: {
+    fontWeight: 'bold',
+    marginRight: 8,
+  },
+  messageTime: {
+    fontSize: 12,
+    color: '#888888',
+    marginLeft: 'auto',
+  },
+  messageBody: {
+    marginBottom: 8,
+  },
+  messageText: {
     fontSize: 16,
-    lineHeight: 22,
-  },
-  timestamp: {
-    fontSize: 10,
-    color: '#999',
-    marginTop: 2,
-    alignSelf: 'flex-end',
+    lineHeight: 24,
   },
   attachmentsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 8,
   },
-  attachmentChip: {
-    marginRight: 4,
-    marginBottom: 4,
+  attachmentBadge: {
+    margin: 4,
   },
   actionsContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
+    marginRight: 'auto', // Placer les actions à gauche
   },
   actionButton: {
+    margin: 0, // Réduire les marges pour économiser de l'espace
+  },
+  editActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+  },
+  editButton: {
     marginLeft: 8,
   },
-  actionIcons: {
-    flexDirection: 'row',
-    position: 'absolute',
-    right: -8,
-    bottom: -8,
-  },
-  iconButton: {
-    margin: 2,
+  editHintText: {
+    fontStyle: 'italic',
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 

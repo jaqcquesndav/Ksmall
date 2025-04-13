@@ -106,7 +106,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   const handleSignup = () => {
-    navigation.navigate('Signup');
+    navigation.navigate("Register");
   };
 
   return (

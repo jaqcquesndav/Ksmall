@@ -1,8 +1,15 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { MainStackParamList } from './types';
 import TabNavigator from './TabNavigator';
-import UserProfileScreen from '../screens/settings/UserProfileScreen';
-import BusinessProfileScreen from '../screens/settings/BusinessProfileScreen';
+
+// Import all screens for the main stack
+import UserProfileScreen from '../screens/profile/UserProfileScreen';
+import BusinessProfileScreen from '../screens/profile/BusinessProfileScreen';
+import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+
+// Import settings sub-screens
 import UserManagementScreen from '../screens/settings/UserManagementScreen';
 import PaymentMethodsScreen from '../screens/settings/PaymentMethodsScreen';
 import ThemeSettingsScreen from '../screens/settings/ThemeSettingsScreen';
@@ -11,35 +18,36 @@ import NotificationSettingsScreen from '../screens/settings/NotificationSettings
 import PermissionSettingsScreen from '../screens/settings/PermissionSettingsScreen';
 import HelpSupportScreen from '../screens/settings/HelpSupportScreen';
 import AboutScreen from '../screens/settings/AboutScreen';
-import NotificationsScreen from '../screens/notifications/NotificationsScreen';
-import SettingsScreen from '../screens/settings/SettingsScreen';
 
-// Accounting screens
+// Import accounting screens
 import JournalEntryDetailsScreen from '../screens/accounting/JournalEntryDetailsScreen';
+import AddJournalEntryScreen from '../screens/accounting/AddJournalEntryScreen';
+import AccountDetailsScreen from '../screens/accounting/AccountDetailsScreen';
 
-// Inventory screens - fix the import path
+// Import inventory screens
 import ProductDetailsScreen from '../screens/inventory/ProductDetailsScreen';
 import TransactionDetailsScreen from '../screens/inventory/TransactionDetailsScreen';
 import AddProductScreen from '../screens/inventory/AddProductScreen';
+import StockAdjustmentScreen from '../screens/inventory/StockAdjustmentScreen';
 
-import { MainStackParamList } from './types';
+// Import chat screen
+import ConversationScreen from '../screens/chat/ConversationScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
-const MainStack = () => {
+const MainStack: React.FC = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Tabs" component={TabNavigator} />
+      {/* Main tabs */}
+      <Stack.Screen name="MainTabs" component={TabNavigator} />
       
-      {/* Main settings screen */}
-      <Stack.Screen name="Settings" component={SettingsScreen} />
-      
-      {/* Notifications */}
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      
-      {/* Profile & Settings screens */}
+      {/* Profile and common screens */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="BusinessProfile" component={BusinessProfileScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      
+      {/* Settings sub-screens */}
       <Stack.Screen name="UserManagement" component={UserManagementScreen} />
       <Stack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
       <Stack.Screen name="ThemeSettings" component={ThemeSettingsScreen} />
@@ -51,11 +59,17 @@ const MainStack = () => {
       
       {/* Accounting screens */}
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
+      <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />
+      <Stack.Screen name="AccountDetails" component={AccountDetailsScreen} />
       
       {/* Inventory screens */}
       <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
       <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} />
+      <Stack.Screen name="StockAdjustment" component={StockAdjustmentScreen} />
+      
+      {/* Chat screen */}
+      <Stack.Screen name="Chat" component={ConversationScreen} />
     </Stack.Navigator>
   );
 };

@@ -1,70 +1,45 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
-import { useTheme } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
-import logger from '../utils/logger';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Surface, Title, useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDatabase } from '../context/DatabaseContext';
+import logger from '../utils/logger';
 
 const SplashScreen: React.FC = () => {
-  const theme = useTheme();
-  const { t } = useTranslation();
   const { isInitialized, initializeDb, error } = useDatabase();
-  const [retryCount, setRetryCount] = useState(0);
-
+  const theme = useTheme();
+  
   useEffect(() => {
-    logger.info('SplashScreen monté');
-    
-    // Si la base de données n'est pas initialisée, on tente une initialisation
-    if (!isInitialized && retryCount === 0) {
-      logger.debug('Tentative initiale d\'initialisation de la base de données');
-      initializeDb();
-    }
-    
-    return () => {
-      logger.info('SplashScreen démonté');
+    const init = async () => {
+      if (!isInitialized) {
+        try {
+          await initializeDb();
+          logger.info('Database initialized from SplashScreen');
+        } catch (err) {
+          logger.error('Error initializing database from SplashScreen:', err);
+        }
+      }
     };
-  }, []);
-
-  const handleRetry = async () => {
-    logger.info('Tentative de réinitialisation de la base de données');
-    setRetryCount(prev => prev + 1);
-    await initializeDb();
-  };
-
+    
+    init();
+  }, [isInitialized, initializeDb]);
+  
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text style={[styles.title, { color: theme.colors.primary }]}>KSMall</Text>
-      
-      {!isInitialized && !error && (
-        <>
-          <ActivityIndicator 
-            size="large" 
-            color={theme.colors.primary} 
-            style={styles.loader}
-          />
-          <Text style={styles.loadingText}>
-            {t('initializing_database')}...
-          </Text>
-        </>
-      )}
+    <View style={styles.container}>
+      <Surface style={styles.logoContainer}>
+        <MaterialCommunityIcons 
+          name="calculator-variant" 
+          size={120} 
+          color={theme.colors.primary} 
+        />
+        <Title style={styles.appName}>KSmall</Title>
+      </Surface>
+      <ActivityIndicator size="large" color={theme.colors.primary} style={styles.loader} />
       
       {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorTitle}>
-            {t('database_error')}
-          </Text>
-          <Text style={styles.errorMessage}>
-            {error}
-          </Text>
-          <TouchableOpacity 
-            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
-            onPress={handleRetry}
-          >
-            <Text style={styles.retryButtonText}>
-              {t('retry')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.errorText}>
+          Une erreur est survenue. Veuillez redémarrer l'application.
+        </Text>
       )}
     </View>
   );
@@ -73,46 +48,32 @@ const SplashScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  logoContainer: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
     marginBottom: 40,
   },
+  appName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 16,
+  },
   loader: {
-    marginBottom: 20,
+    marginTop: 20,
   },
-  loadingText: {
-    fontSize: 16,
-  },
-  errorContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#E53935',
-    marginBottom: 10,
-  },
-  errorMessage: {
-    fontSize: 16,
-    marginBottom: 20,
+  errorText: {
+    marginTop: 20,
+    color: 'red',
     textAlign: 'center',
-    color: '#333',
-  },
-  retryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    padding: 20,
   },
 });
 

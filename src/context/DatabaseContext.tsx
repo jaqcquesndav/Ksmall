@@ -1,102 +1,92 @@
-import React, { createContext, useState, useEffect, ReactNode, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import DatabaseService from '../services/DatabaseService';
-import { useAuth } from './AuthContext';
 import logger from '../utils/logger';
 
-export interface DatabaseContextType {
-  executeQuery: (query: string, params?: any[]) => Promise<any[]>;
+interface DatabaseContextValue {
   isInitialized: boolean;
-  initializeDb: () => Promise<boolean>;
-  error: string | null;
+  db: any; // Using any for now - ideally should be properly typed
+  executeQuery: (query: string, params?: any[]) => Promise<any>;
+  initializeDb: () => Promise<void>; // Added this missing property
+  error: Error | null; // Added this missing property
 }
 
-// Valeur par défaut du contexte
-export const DatabaseContext = createContext<DatabaseContextType>({
-  executeQuery: async () => [],
+const DatabaseContext = createContext<DatabaseContextValue>({
   isInitialized: false,
-  initializeDb: async () => false,
-  error: null
+  db: null,
+  executeQuery: async () => null,
+  initializeDb: async () => {}, // Default implementation
+  error: null, // Default value
 });
 
-interface DatabaseProviderProps {
-  children: ReactNode;
-}
-
-export const DatabaseProvider: React.FC<DatabaseProviderProps> = ({ children }) => {
+export const DatabaseProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  // Utiliser useAuth() uniquement dans le composant React, pas dans le service
-  const { user } = useAuth();
-  
-  // Passer l'utilisateur au service quand il change
-  useEffect(() => {
-    // C'est ici que nous passons l'utilisateur au service
-    DatabaseService.setCurrentUser(user);
-    
-    // Si l'utilisateur change, nous pourrions avoir besoin de réinitialiser la base de données
-    if (user) {
-      initializeDb();
-    }
-  }, [user]);
+  const [db, setDb] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
-  const initializeDb = async (): Promise<boolean> => {
+  // Define the initializeDb function
+  const initializeDb = async () => {
     try {
-      logger.info('Initialisation de la base de données...');
+      // Initialize the database
+      await DatabaseService.initDatabase();
+      
+      // Get the database connection
+      const dbConnection = await DatabaseService.getDBConnection();
+      setDb(dbConnection);
+      
+      // Set initialization to true
+      setIsInitialized(true);
       setError(null);
-      const result = await DatabaseService.initDatabase();
-      setIsInitialized(result);
-      return result;
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Erreur inconnue lors de l\'initialisation de la base de données';
-      logger.error('Échec de l\'initialisation de la base de données', err);
-      setError(errorMessage);
-      return false;
+      
+      logger.info('Database initialized successfully');
+    } catch (err) {
+      const dbError = err instanceof Error ? err : new Error('Unknown database error');
+      logger.error('Failed to initialize database:', dbError);
+      setError(dbError);
+      // Even if initialization fails, we set isInitialized to true
+      // to allow the app to continue, potentially with reduced functionality
+      setIsInitialized(true);
     }
   };
 
+  // Execute queries using our database service
+  const executeQuery = async (query: string, params: any[] = []) => {
+    if (!db) {
+      logger.error('Database not initialized');
+      throw new Error('Database not initialized');
+    }
+
+    try {
+      const [result, error] = await DatabaseService.executeQuery(db, query, params);
+      
+      if (error) {
+        throw error;
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error(`Query execution failed: ${query}`, error);
+      throw error;
+    }
+  };
+
+  // Initialize the database on the first render
   useEffect(() => {
-    // Initialiser la base de données au montage du provider
     initializeDb();
   }, []);
 
-  const executeQuery = async (query: string, params: any[] = []): Promise<any[]> => {
-    try {
-      if (!isInitialized && !DatabaseService.isDbInitialized()) {
-        logger.warn('Tentative d\'exécuter une requête avant l\'initialisation de la base de données');
-        
-        // Tentative d'initialisation au moment de la requête si nécessaire
-        await initializeDb();
-      }
-      
-      return await DatabaseService.executeQuery(query, params);
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Erreur lors de l\'exécution de la requête SQL';
-      logger.error(errorMessage, err);
-      
-      // En dev, propager l'erreur, en prod renvoyer un tableau vide
-      if (__DEV__) {
-        setError(errorMessage);
-        throw err;
-      }
-      return [];
-    }
-  };
-
   return (
-    <DatabaseContext.Provider 
-      value={{ 
-        executeQuery, 
-        isInitialized, 
-        initializeDb,
-        error 
-      }}
-    >
+    <DatabaseContext.Provider value={{ 
+      isInitialized, 
+      db, 
+      executeQuery, 
+      initializeDb, // Expose the function
+      error // Expose the error state
+    }}>
       {children}
     </DatabaseContext.Provider>
   );
 };
 
-// Hook personnalisé pour accéder au contexte de base de données
-export const useDatabase = () => {
-  return useContext(DatabaseContext);
-};
+export const useDatabase = () => useContext(DatabaseContext);
+
+export default DatabaseContext;

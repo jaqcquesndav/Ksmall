@@ -4,7 +4,8 @@ import {
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ScrollView
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
@@ -12,7 +13,6 @@ import {
   IconButton,
   Chip,
   Menu,
-  Appbar,
   Portal,
   Modal,
   ActivityIndicator
@@ -20,6 +20,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio } from 'expo-av';
+import Speech from '../../utils/SpeechHelper';
+import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
+import { useMainNavigation } from '../../hooks/useAppNavigation';
+import { MainStackParamList } from '../../navigation/types';
 
 import DynamicResponseBuilder, {
   MESSAGE_TYPES,
@@ -28,17 +32,25 @@ import DynamicResponseBuilder, {
 import ModeSelector, { CHAT_MODES } from '../../components/chat/ModeSelector';
 import ChatOptions from '../../components/chat/ChatOptions';
 import ChatPromptSuggestions from '../../components/chat/ChatPromptSuggestions';
+import VoiceInputModal from '../../components/chat/VoiceInputModal';
 import { JournalEntry } from '../../components/accounting/DynamicJournalEntryWidget';
 import { InventoryData } from '../../components/chat/DynamicResponseBuilder';
 import AIBackendService from '../../services/AIBackendService';
+import ConversationService, { Conversation } from '../../services/ConversationService';
 import { generateUniqueId } from '../../utils/helpers';
 import { formatTime } from '../../utils/formatters';
 import logger from '../../utils/logger';
 import { showErrorToUser } from '../../utils/errorHandler';
 import AppHeader from '../../components/common/AppHeader';
+import ConversationHistory from '../../components/chat/ConversationHistory';
+
+// Define the route param type
+type ChatScreenRouteProp = RouteProp<MainStackParamList, 'Chat'>;
 
 const ChatScreen: React.FC = () => {
   const { t } = useTranslation();
+  const navigation = useMainNavigation();
+  const route = useRoute<ChatScreenRouteProp>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -48,28 +60,49 @@ const ChatScreen: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [showConversationList, setShowConversationList] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const flatListRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
     logger.info('ChatScreen monté');
     
-    if (messages.length === 0) {
-      logger.debug('Initialisation du message de bienvenue');
-      const welcomeMessage: Message = {
-        id: generateUniqueId(),
-        content: t('welcome_message'),
-        messageType: MESSAGE_TYPES.REGULAR_CHAT,
-        isUser: false,
-        timestamp: new Date().toISOString()
-      };
-      setMessages([welcomeMessage]);
-    }
+    const loadConversation = async () => {
+      if (route?.params?.conversationId) {
+        const conversation = await ConversationService.getConversationById(route.params.conversationId);
+        if (conversation) {
+          setCurrentConversation(conversation);
+          setChatMode(conversation.mode);
+          setMessages(conversation.messages);
+          return;
+        }
+      }
+
+      if (messages.length === 0) {
+        logger.debug('Initialisation du message de bienvenue');
+        const welcomeMessage: Message = {
+          id: generateUniqueId(),
+          content: t('welcome_message'),
+          messageType: MESSAGE_TYPES.REGULAR_CHAT,
+          isUser: false,
+          timestamp: new Date().toISOString()
+        };
+        setMessages([welcomeMessage]);
+        
+        const newConversation = await ConversationService.createConversation(chatMode, welcomeMessage);
+        setCurrentConversation(newConversation);
+      }
+    };
+    
+    loadConversation();
     
     return () => {
       logger.info('ChatScreen démonté');
     };
-  }, []);
+  }, [route?.params?.conversationId]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -106,6 +139,10 @@ const ChatScreen: React.FC = () => {
     setIsLoading(true);
 
     try {
+      if (currentConversation) {
+        await ConversationService.addMessage(currentConversation.id, userMessage);
+      }
+
       logger.info('Appel de l\'API IA', { mode: chatMode });
       const response = await AIBackendService.processUserInput({
         text: userMessageText,
@@ -117,6 +154,10 @@ const ChatScreen: React.FC = () => {
 
       const aiResponse = createResponseMessage(response);
       setMessages(prev => [...prev, aiResponse]);
+
+      if (currentConversation) {
+        await ConversationService.addMessage(currentConversation.id, aiResponse);
+      }
     } catch (error) {
       logger.error('Erreur lors du traitement du message', error);
       showErrorToUser('Une erreur s\'est produite lors du traitement de votre message.', error);
@@ -129,6 +170,10 @@ const ChatScreen: React.FC = () => {
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
+
+      if (currentConversation) {
+        await ConversationService.addMessage(currentConversation.id, errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -211,28 +256,36 @@ const ChatScreen: React.FC = () => {
   };
 
   const handleTakePhoto = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (permissionResult.granted === false) {
-      alert(t('camera_permission_required'));
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const name = `photo_${Date.now()}.jpg`;
-
-      setAttachments(prev => [...prev, {
-        uri: asset.uri,
-        type: 'image/jpeg',
-        name
-      }]);
+    try {
+      // Request camera permissions
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        alert(t('camera_permission_required'));
+        return;
+      }
+      
+      // More robust error handling for the camera
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const name = `photo_${Date.now()}.jpg`;
+        
+        setAttachments(prev => [...prev, {
+          uri: asset.uri,
+          type: 'image/jpeg',
+          name
+        }]);
+      }
+    } catch (error) {
+      logger.error('Error taking photo', error);
+      showErrorToUser(t('error_camera'));
     }
   };
 
@@ -248,6 +301,10 @@ const ChatScreen: React.FC = () => {
         name: result.name || 'document'
       }]);
     }
+  };
+
+  const handleVoiceMode = () => {
+    setShowVoiceModal(true);
   };
 
   const handleToggleRecording = async () => {
@@ -287,27 +344,57 @@ const ChatScreen: React.FC = () => {
     }
   };
 
-  const handleValidateMessage = (message: Message) => {
-    AIBackendService.validateEntry({
-      id: message.id,
-      type: message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY ? 'journal_entry' : 'inventory',
-      data: message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY ? message.journalData : message.inventoryData
-    }).then(() => {
+  const handleValidateMessage = async (message: Message) => {
+    try {
+      await AIBackendService.validateEntry({
+        id: message.id,
+        type: message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY ? 'journal_entry' : 'inventory',
+        data: message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY ? message.journalData : message.inventoryData
+      });
+      
+      const updatedMessage = { ...message, status: 'validated' as const };
       setMessages(prev =>
         prev.map(msg =>
-          msg.id === message.id ? { ...msg, status: 'validated' } : msg
+          msg.id === message.id ? updatedMessage : msg
         )
       );
-    });
+      
+      if (currentConversation) {
+        const updatedConversation = {
+          ...currentConversation,
+          messages: currentConversation.messages.map(msg =>
+            msg.id === message.id ? updatedMessage : msg
+          )
+        };
+        await ConversationService.updateConversation(updatedConversation);
+      }
+    } catch (error) {
+      logger.error('Erreur lors de la validation du message', error);
+      showErrorToUser('Erreur lors de la validation', error);
+    }
   };
 
-  const handleEditMessage = (message: Message) => {
+  const handleEditMessage = async (message: Message) => {
     setSelectedMessage(message);
     setShowOptionsModal(true);
   };
 
-  const handleDeleteMessage = (message: Message) => {
-    setMessages(prev => prev.filter(msg => msg.id !== message.id));
+  const handleDeleteMessage = async (message: Message) => {
+    try {
+      const updatedMessages = messages.filter(msg => msg.id !== message.id);
+      setMessages(updatedMessages);
+      
+      if (currentConversation) {
+        const updatedConversation = {
+          ...currentConversation,
+          messages: currentConversation.messages.filter(msg => msg.id !== message.id)
+        };
+        await ConversationService.updateConversation(updatedConversation);
+      }
+    } catch (error) {
+      logger.error('Erreur lors de la suppression du message', error);
+      showErrorToUser('Erreur lors de la suppression', error);
+    }
   };
 
   const handleAttachToMessage = (message: Message) => {
@@ -317,6 +404,30 @@ const ChatScreen: React.FC = () => {
 
   const handleRemoveAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleNewConversation = async () => {
+    try {
+      const welcomeMessage: Message = {
+        id: generateUniqueId(),
+        content: t('welcome_message'),
+        messageType: MESSAGE_TYPES.REGULAR_CHAT,
+        isUser: false,
+        timestamp: new Date().toISOString()
+      };
+      
+      const newConversation = await ConversationService.createConversation(CHAT_MODES.REGULAR, welcomeMessage);
+      setCurrentConversation(newConversation);
+      setChatMode(CHAT_MODES.REGULAR);
+      setMessages([welcomeMessage]);
+    } catch (error) {
+      logger.error('Erreur lors de la création d\'une nouvelle conversation', error);
+      showErrorToUser('Erreur lors de la création d\'une nouvelle conversation', error);
+    }
+  };
+
+  const handleNavigateToHistory = () => {
+    setShowHistoryModal(true);
   };
 
   const renderAttachments = () => {
@@ -346,10 +457,26 @@ const ChatScreen: React.FC = () => {
     >
       <AppHeader title={t('ksmall_assistant')} />
 
-      <ModeSelector
-        currentMode={chatMode}
-        onChangeMode={setChatMode}
-      />
+      <View style={styles.topBar}>
+        <ModeSelector
+          currentMode={chatMode}
+          onChangeMode={setChatMode}
+        />
+        <View style={styles.actionButtons}>
+          <IconButton
+            icon="clock-outline"
+            size={24}
+            onPress={handleNavigateToHistory}
+            style={styles.actionButton}
+          />
+          <IconButton
+            icon="plus-circle-outline"
+            size={24}
+            onPress={handleNewConversation}
+            style={styles.actionButton}
+          />
+        </View>
+      </View>
 
       <ChatPromptSuggestions 
         mode={chatMode} 
@@ -400,18 +527,22 @@ const ChatScreen: React.FC = () => {
           onChangeText={setInputText}
           multiline
         />
-        <IconButton
-          icon={isRecording ? "stop-circle-outline" : "microphone"}
-          size={24}
-          iconColor={isRecording ? "#FF3B30" : undefined}
-          onPress={handleToggleRecording}
-        />
-        <IconButton
-          icon="send"
-          size={24}
-          onPress={handleSendMessage}
-          disabled={(!inputText.trim() && attachments.length === 0) || isLoading}
-        />
+        
+        {inputText.trim() ? (
+          <IconButton
+            icon="send"
+            size={24}
+            onPress={handleSendMessage}
+            disabled={isLoading}
+          />
+        ) : (
+          <IconButton
+            icon="microphone"
+            size={24}
+            onPress={handleVoiceMode}
+            disabled={isLoading}
+          />
+        )}
       </View>
 
       <Portal>
@@ -435,6 +566,40 @@ const ChatScreen: React.FC = () => {
             />
           )}
         </Modal>
+
+        <Modal
+          visible={showVoiceModal}
+          onDismiss={() => setShowVoiceModal(false)}
+          contentContainerStyle={styles.voiceModalContainer}
+        >
+          <VoiceInputModal 
+            onClose={() => setShowVoiceModal(false)}
+            onMessageSent={(message) => {
+              setShowVoiceModal(false);
+              setInputText(message);
+              setTimeout(() => {
+                handleSendMessage();
+              }, 100);
+            }}
+            chatMode={chatMode}
+          />
+        </Modal>
+
+        <Modal
+          visible={showHistoryModal}
+          onDismiss={() => setShowHistoryModal(false)}
+          contentContainerStyle={styles.historyModalContainer}
+        >
+          <ConversationHistory 
+            onSelectConversation={(conversation) => {
+              setCurrentConversation(conversation);
+              setChatMode(conversation.mode);
+              setMessages(conversation.messages);
+              setShowHistoryModal(false);
+            }}
+            onClose={() => setShowHistoryModal(false)}
+          />
+        </Modal>
       </Portal>
     </KeyboardAvoidingView>
   );
@@ -444,6 +609,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#cccccc',
+    backgroundColor: '#ffffff',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    marginHorizontal: 4,
   },
   messagesList: {
     flex: 1,
@@ -488,6 +669,22 @@ const styles = StyleSheet.create({
     padding: 20,
     margin: 20,
     borderRadius: 8,
+  },
+  voiceModalContainer: {
+    backgroundColor: 'white',
+    margin: 0,
+    padding: 0,
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  historyModalContainer: {
+    backgroundColor: 'white',
+    margin: 0,
+    padding: 0,
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
 });
 

@@ -44,7 +44,7 @@ const InventoryScreen = () => {
       <Card 
         style={styles.productCard} 
         onPress={() => {
-          navigation.navigate('ProductDetails', { productId: item.id });
+          navigation.navigate('ProductDetails' as any, { productId: item.id } as any);
         }}
       >
         <Card.Content>
@@ -83,7 +83,7 @@ const InventoryScreen = () => {
     <Card 
       style={styles.transactionCard} 
       onPress={() => {
-        navigation.navigate('TransactionDetails', { transactionId: item.id });
+        navigation.navigate('TransactionDetails' as any, { transactionId: item.id } as any);
       }}
     >
       <Card.Content>
@@ -166,7 +166,7 @@ const InventoryScreen = () => {
             icon="plus"
             style={styles.fab}
             onPress={() => {
-              navigation.navigate('AddProduct');
+              navigation.navigate('AddProduct' as any);
             }}
           />
         </>

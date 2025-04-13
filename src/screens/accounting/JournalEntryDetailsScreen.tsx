@@ -1,16 +1,19 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, Card, DataTable } from 'react-native-paper';
+import { Text, Button, Card, Divider } from 'react-native-paper';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../../navigation/types';
 import AppHeader from '../../components/common/AppHeader';
+import { MainStackParamList } from '../../navigation/types';
 import { accountingMockData } from '../../data/mockData';
+import { useMainNavigation } from '../../hooks/useAppNavigation';
 
-type Props = NativeStackScreenProps<MainStackParamList, 'JournalEntryDetails'>;
+type JournalEntryDetailsRouteProp = RouteProp<MainStackParamList, 'JournalEntryDetails'>;
 
-const JournalEntryDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+const JournalEntryDetailsScreen: React.FC = () => {
   const { t } = useTranslation();
+  const navigation = useMainNavigation();
+  const route = useRoute<JournalEntryDetailsRouteProp>();
   const { entryId } = route.params;
   
   // Find the entry in mock data
@@ -32,6 +35,11 @@ const JournalEntryDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       </View>
     );
   }
+
+  // Utilisation typée sécurisée de la navigation
+  const handleEdit = () => {
+    navigation.navigate('AddJournalEntry', { draftId: entryId });
+  };
 
   return (
     <View style={styles.container}>
@@ -55,42 +63,48 @@ const JournalEntryDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
             </View>
             
+            <Divider />
+
             <View style={styles.section}>
               <Text style={styles.label}>{t('description')}</Text>
               <Text style={styles.value}>{entry.description}</Text>
             </View>
             
+            <Divider />
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t('journal_lines')}</Text>
               
-              <DataTable>
-                <DataTable.Header>
-                  <DataTable.Title>{t('account')}</DataTable.Title>
-                  <DataTable.Title>{t('description')}</DataTable.Title>
-                  <DataTable.Title numeric>{t('debit')}</DataTable.Title>
-                  <DataTable.Title numeric>{t('credit')}</DataTable.Title>
-                </DataTable.Header>
-                
-                {entry.lines.map((line, index) => (
-                  <DataTable.Row key={`line-${index}`}>
-                    <DataTable.Cell>{line.accountCode}</DataTable.Cell>
-                    <DataTable.Cell>{line.description}</DataTable.Cell>
-                    <DataTable.Cell numeric>{line.debit > 0 ? line.debit.toFixed(2) : ''}</DataTable.Cell>
-                    <DataTable.Cell numeric>{line.credit > 0 ? line.credit.toFixed(2) : ''}</DataTable.Cell>
-                  </DataTable.Row>
-                ))}
-                
-                <DataTable.Row style={styles.totalRow}>
-                  <DataTable.Cell>{t('total')}</DataTable.Cell>
-                  <DataTable.Cell>{''}</DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    {entry.lines.reduce((sum, line) => sum + line.debit, 0).toFixed(2)}
-                  </DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    {entry.lines.reduce((sum, line) => sum + line.credit, 0).toFixed(2)}
-                  </DataTable.Cell>
-                </DataTable.Row>
-              </DataTable>
+              <ScrollView horizontal>
+                <View>
+                  <View style={styles.tableHeader}>
+                    <Text style={styles.tableHeaderCell}>{t('account')}</Text>
+                    <Text style={styles.tableHeaderCell}>{t('description')}</Text>
+                    <Text style={styles.tableHeaderCell}>{t('debit')}</Text>
+                    <Text style={styles.tableHeaderCell}>{t('credit')}</Text>
+                  </View>
+                  
+                  {entry.lines.map((line, index) => (
+                    <View key={`line-${index}`} style={styles.tableRow}>
+                      <Text style={styles.tableCell}>{line.accountCode}</Text>
+                      <Text style={styles.tableCell}>{line.description}</Text>
+                      <Text style={styles.tableCell}>{line.debit > 0 ? line.debit.toFixed(2) : ''}</Text>
+                      <Text style={styles.tableCell}>{line.credit > 0 ? line.credit.toFixed(2) : ''}</Text>
+                    </View>
+                  ))}
+                  
+                  <View style={styles.tableRow}>
+                    <Text style={styles.tableCell}>{t('total')}</Text>
+                    <Text style={styles.tableCell}>{''}</Text>
+                    <Text style={styles.tableCell}>
+                      {entry.lines.reduce((sum, line) => sum + line.debit, 0).toFixed(2)}
+                    </Text>
+                    <Text style={styles.tableCell}>
+                      {entry.lines.reduce((sum, line) => sum + line.credit, 0).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              </ScrollView>
             </View>
           </Card.Content>
         </Card>
@@ -98,7 +112,7 @@ const JournalEntryDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.buttonContainer}>
           <Button 
             mode="contained" 
-            onPress={() => {}} 
+            onPress={handleEdit} 
             style={styles.button}
           >
             {entry.status === 'pending' ? t('validate') : t('edit')}
@@ -154,8 +168,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  totalRow: {
+  tableHeader: {
+    flexDirection: 'row',
     backgroundColor: '#f0f0f0',
+    padding: 8,
+  },
+  tableHeaderCell: {
+    flex: 1,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    padding: 8,
+  },
+  tableCell: {
+    flex: 1,
+    textAlign: 'center',
   },
   buttonContainer: {
     flexDirection: 'row',

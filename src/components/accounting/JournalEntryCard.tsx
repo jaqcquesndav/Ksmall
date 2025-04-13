@@ -1,32 +1,23 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Card } from 'react-native-paper';
+import { Card, Text } from 'react-native-paper';
 import { JournalEntry } from './DynamicJournalEntryWidget';
-import DynamicJournalEntryWidget from './DynamicJournalEntryWidget';
 
 interface JournalEntryCardProps {
-  journalEntry: JournalEntry;
-  status?: 'validated' | 'pending' | 'rejected';
+  data: JournalEntry;
+  readOnly?: boolean;
 }
 
-const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
-  journalEntry,
-  status = 'pending',
-}) => {
-  // Utiliser le rendu de fonction pour Card.Content plutôt que les enfants
-  const renderContent = () => {
-    return (
-      <DynamicJournalEntryWidget
-        data={journalEntry}
-        readOnly={status === 'validated'}
-      />
-    );
-  };
-
+const JournalEntryCard: React.FC<JournalEntryCardProps> = ({ data, readOnly = false }) => {
   return (
     <Card style={styles.container}>
+      <Card.Title 
+        title={data.description} 
+        subtitle={new Date(data.date).toLocaleDateString()} 
+      />
       <Card.Content>
-        {renderContent()}
+        <Text>Débit total: {data.totalDebit.toFixed(2)}</Text>
+        <Text>Crédit total: {data.totalCredit.toFixed(2)}</Text>
       </Card.Content>
     </Card>
   );
@@ -35,6 +26,7 @@ const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginVertical: 8,
+    marginHorizontal: 16,
   },
 });
 

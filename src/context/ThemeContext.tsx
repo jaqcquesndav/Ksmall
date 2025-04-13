@@ -1,96 +1,164 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
-import { DefaultTheme, MD3DarkTheme } from 'react-native-paper'; // Utilisation de MD3DarkTheme
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DefaultTheme, MD3DarkTheme } from 'react-native-paper';
+import { DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
 
-// Define theme types
-export type ThemeType = 'light' | 'dark' | 'system';
+// Theme customization options
+const lightTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#6200EE',
+  },
+};
 
-interface ThemeContextType {
-  theme: typeof DefaultTheme;
-  themeType: ThemeType;
-  setThemeType: (type: ThemeType) => void;
-  toggleTheme: () => void;
-}
+const darkTheme = {
+  ...MD3DarkTheme,
+  colors: {
+    ...MD3DarkTheme.colors,
+    primary: '#BB86FC',
+  },
+};
+
+// Navigation theme for dark mode
+export const navigationDarkTheme = {
+  ...NavigationDarkTheme,
+  colors: {
+    ...NavigationDarkTheme.colors,
+    primary: '#BB86FC',
+  },
+};
+
+// Available theme colors
+export const themeColors = {
+  default: '#6200EE',
+  blue: '#1976D2',
+  green: '#388E3C',
+  orange: '#F57C00',
+  purple: '#7B1FA2'
+};
+
+// Theme context type
+type ThemeContextType = {
+  themeType: 'light' | 'dark';
+  setThemeType: (theme: 'light' | 'dark') => void;
+  theme: typeof lightTheme;
+  systemTheme: boolean;
+  setSystemTheme: (useSystem: boolean) => void;
+  themeColor: string;
+  setThemeColor: (color: string) => void;
+};
 
 // Create context with default values
 const ThemeContext = createContext<ThemeContextType>({
-  theme: DefaultTheme,
   themeType: 'light',
   setThemeType: () => {},
-  toggleTheme: () => {},
+  theme: lightTheme,
+  systemTheme: true,
+  setSystemTheme: () => {},
+  themeColor: themeColors.default,
+  setThemeColor: () => {},
 });
 
-interface ThemeProviderProps {
-  children: ReactNode;
-}
+// Provider component
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const systemColorScheme = useColorScheme();
+  const [themeType, setThemeType] = useState<'light' | 'dark'>('light');
+  const [systemTheme, setSystemTheme] = useState(true);
+  const [themeColor, setThemeColor] = useState(themeColors.default);
 
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [themeType, setThemeType] = useState<ThemeType>('light');
-  
-  // Load saved theme preference on component mount
-  React.useEffect(() => {
-    const loadThemePreference = async () => {
+  // Load saved theme preferences on mount
+  useEffect(() => {
+    const loadThemePreferences = async () => {
       try {
-        const savedTheme = await AsyncStorage.getItem('@theme_preference');
-        if (savedTheme !== null) {
-          setThemeType(savedTheme as ThemeType);
+        const savedThemeType = await AsyncStorage.getItem('themeType');
+        const savedSystemTheme = await AsyncStorage.getItem('systemTheme');
+        const savedThemeColor = await AsyncStorage.getItem('themeColor');
+        
+        if (savedThemeType) {
+          setThemeType(savedThemeType as 'light' | 'dark');
         }
-      } catch (e) {
-        console.error('Failed to load theme preference', e);
+        
+        if (savedSystemTheme !== null) {
+          setSystemTheme(savedSystemTheme === 'true');
+        }
+        
+        if (savedThemeColor) {
+          setThemeColor(savedThemeColor);
+        }
+      } catch (error) {
+        console.error('Failed to load theme preferences', error);
       }
     };
-    
-    loadThemePreference();
+
+    loadThemePreferences();
   }, []);
-  
-  // Save theme preference whenever it changes
-  React.useEffect(() => {
-    const saveThemePreference = async () => {
+
+  // Save theme preferences when they change
+  useEffect(() => {
+    const saveThemePreferences = async () => {
       try {
-        // Correction de la fonction (setItem au lieu de getItem)
-        await AsyncStorage.setItem('@theme_preference', themeType);
-      } catch (e) {
-        console.error('Failed to save theme preference', e);
+        await AsyncStorage.setItem('themeType', themeType);
+        await AsyncStorage.setItem('systemTheme', String(systemTheme));
+        await AsyncStorage.setItem('themeColor', themeColor);
+      } catch (error) {
+        console.error('Failed to save theme preferences', error);
       }
     };
+
+    saveThemePreferences();
+  }, [themeType, systemTheme, themeColor]);
+
+  // Get appropriate theme based on preferences
+  const getTheme = () => {
+    const activeThemeType = systemTheme ? systemColorScheme || 'light' : themeType;
     
-    saveThemePreference();
-  }, [themeType]);
-  
-  // Determine the actual theme object based on themeType
-  const theme = React.useMemo(() => {
-    if (themeType === 'dark') {
-      return {
-        ...MD3DarkTheme, // Utilisation de MD3DarkTheme
-        colors: {
-          ...MD3DarkTheme.colors,
-          primary: '#BB86FC',
-          accent: '#03DAC6',
-        }
-      };
-    } else {
-      return {
-        ...DefaultTheme,
-        colors: {
-          ...DefaultTheme.colors,
-          primary: '#6200EE',
-          accent: '#03DAC6',
-        }
-      };
-    }
-  }, [themeType]);
-  
-  // Toggle between light and dark
-  const toggleTheme = () => {
-    setThemeType(prev => prev === 'dark' ? 'light' : 'dark');
+    const baseTheme = activeThemeType === 'dark' ? darkTheme : lightTheme;
+    
+    // Apply custom color
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        primary: themeColor,
+      },
+    };
   };
-  
+
+  // Handle theme type change
+  const handleThemeTypeChange = (newTheme: 'light' | 'dark') => {
+    setThemeType(newTheme);
+  };
+
+  // Handle system theme preference change
+  const handleSystemThemeChange = (useSystem: boolean) => {
+    setSystemTheme(useSystem);
+  };
+
+  // Handle theme color change
+  const handleThemeColorChange = (color: string) => {
+    setThemeColor(color);
+  };
+
   return (
-    <ThemeContext.Provider value={{ theme, themeType, setThemeType, toggleTheme }}>
+    <ThemeContext.Provider
+      value={{
+        themeType,
+        setThemeType: handleThemeTypeChange,
+        theme: getTheme(),
+        systemTheme,
+        setSystemTheme: handleSystemThemeChange,
+        themeColor,
+        setThemeColor: handleThemeColorChange,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
 };
 
-// Custom hook to use the theme context
-export const useTheme = () => useContext(ThemeContext);
+// Custom hook for using theme context
+export const useThemeContext = () => useContext(ThemeContext);
+
+export default ThemeContext;

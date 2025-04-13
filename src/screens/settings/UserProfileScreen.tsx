@@ -1,389 +1,234 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  ScrollView,
   StyleSheet,
-  Alert,
+  ScrollView,
   TouchableOpacity,
+  Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
 } from 'react-native';
-import { 
-  Appbar, TextInput, Button, SegmentedButtons, 
-  RadioButton, Text, Avatar, useTheme 
+import {
+  Avatar,
+  TextInput,
+  Button,
+  Text,
+  List,
+  HelperText,
+  Divider,
+  ActivityIndicator,
 } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
+import AppHeader from '../../components/common/AppHeader';
 import logger from '../../utils/logger';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../../navigation/types';
+import { useDispatch } from 'react-redux';
+// Ensure the correct path to the userActions file
+import { updateUserProfile } from '../../store/userActions';
+import UserService from '../../services/UserService';
 
-type UserProfileScreenProps = NativeStackScreenProps<MainStackParamList, 'UserProfile'>;
-
-interface ProfileFormData {
-  photoURL: string | null;
-  firstName: string;
-  lastName: string;
-  gender: string;
-  birthDate: string;
-  maritalStatus: string;
-  idNumber: string;
-  spouses: { name: string; idNumber: string }[];
-  children: number;
-  address: {
-    street: string;
-    city: string;
-    postalCode: string;
-    country: string;
-    coordinates: { latitude: number | null; longitude: number | null };
-  };
+interface UserFormData {
+  displayName: string;
+  email: string;
   phoneNumber: string;
-  useBiometrics: boolean;
+  photoURL: string | null;
+  position: string;
+  language: string;
 }
 
-const UserProfileScreen: React.FC<UserProfileScreenProps> = ({ navigation }) => {
+const UserProfileScreen: React.FC = () => {
   const { t } = useTranslation();
-  const theme = useTheme();
   const { user } = useAuth();
-  
+  const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<ProfileFormData>({
-    photoURL: user?.photoURL || null,
-    firstName: user?.displayName?.split(' ')[0] || '',
-    lastName: user?.displayName?.split(' ')[1] || '',
-    gender: 'male',
-    birthDate: '',
-    maritalStatus: 'single',
-    idNumber: '',
-    spouses: [],
-    children: 0,
-    address: {
-      street: '',
-      city: '',
-      postalCode: '',
-      country: '',
-      coordinates: { latitude: null, longitude: null }
-    },
-    phoneNumber: user?.phoneNumber || '',
-    useBiometrics: false
-  });
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   
-  const [currentTab, setCurrentTab] = useState<string>('personal');
+  const [formData, setFormData] = useState<UserFormData>({
+    displayName: user?.displayName || '',
+    email: user?.email || '',
+    phoneNumber: user?.phoneNumber || '',
+    photoURL: user?.photoURL || null,
+    position: user?.position || '',
+    language: user?.language || 'fr',
+  });
 
-  const updateUserProfile = async (userData: any) => {
-    // Mock implementation
-    console.log('Updating user profile:', userData);
-    return Promise.resolve();
+  const handlePickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert(t('permission_required'), t('camera_roll_permission_message'));
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets[0].uri) {
+        const selectedImage = result.assets[0];
+        const avatarUri = selectedImage.uri;
+        
+        const updatedUser = await UserService.updateUserAvatar(avatarUri);
+        
+        if (updatedUser) {
+          dispatch(updateUserProfile(updatedUser));
+          setFormData(prev => ({
+            ...prev,
+            photoURL: avatarUri
+          }));
+        }
+      }
+    } catch (error) {
+      logger.error('Error picking image:', error);
+      Alert.alert(t('error'), t('image_picker_error'));
+    }
   };
 
-  const handleSave = async () => {
-    setLoading(true);
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.displayName.trim()) {
+      newErrors.displayName = t('name_required');
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = t('email_required');
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = t('email_invalid');
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+    
+    setSaving(true);
     try {
-      // Update du profil utilisateur
-      await updateUserProfile({
-        displayName: `${formData.firstName} ${formData.lastName}`.trim(),
-        photoURL: formData.photoURL,
+      // Fix the type issue by matching properties in the User interface
+      await UserService.updateUserProfile({
+        id: user?.id,
+        displayName: formData.displayName,
         phoneNumber: formData.phoneNumber,
-        // Autres données à synchroniser avec votre backend
+        photoURL: formData.photoURL,
+        position: formData.position,
+        language: formData.language,
+        email: formData.email
       });
-
-      // Sauvegarder les données complémentaires dans SQLite
-      // Cela pourrait nécessiter un service dédié pour les profils utilisateurs
-
+      
       Alert.alert(t('success'), t('profile_updated_successfully'));
     } catch (error) {
-      logger.error('Failed to update profile', error);
+      logger.error('Error updating profile:', error);
       Alert.alert(t('error'), t('profile_update_failed'));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
-  
-  const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      Alert.alert(t('permission_required'), t('camera_roll_permission_message'));
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets[0].uri) {
-      setFormData({
-        ...formData,
-        photoURL: result.assets[0].uri
-      });
-    }
-  };
-  
-  const renderPersonalInfoTab = () => (
-    <View>
-      <View style={styles.avatarContainer}>
-        <TouchableOpacity onPress={pickImage}>
-          {formData.photoURL ? (
-            <Avatar.Image size={120} source={{ uri: formData.photoURL }} />
-          ) : (
-            <Avatar.Icon 
-              size={120} 
-              icon="account" 
-              style={{ backgroundColor: theme.colors.primary }}
-            />
-          )}
-          <Button mode="text" onPress={pickImage}>
-            {t('change_photo')}
-          </Button>
-        </TouchableOpacity>
-      </View>
-
-      <TextInput
-        label={t('first_name')}
-        value={formData.firstName}
-        onChangeText={(text) => setFormData({ ...formData, firstName: text })}
-        style={styles.input}
-      />
-      
-      <TextInput
-        label={t('last_name')}
-        value={formData.lastName}
-        onChangeText={(text) => setFormData({ ...formData, lastName: text })}
-        style={styles.input}
-      />
-
-      <Text style={styles.inputLabel}>{t('gender')}</Text>
-      <SegmentedButtons
-        value={formData.gender}
-        onValueChange={(value) => setFormData({ ...formData, gender: value })}
-        buttons={[
-          { value: 'male', label: t('male') },
-          { value: 'female', label: t('female') },
-          { value: 'other', label: t('other') }
-        ]}
-        style={styles.segmentedButtons}
-      />
-      
-      <TextInput
-        label={t('birth_date')}
-        value={formData.birthDate}
-        onChangeText={(text) => setFormData({ ...formData, birthDate: text })}
-        style={styles.input}
-        placeholder="YYYY-MM-DD"
-        keyboardType="numeric"
-      />
-      
-      <Text style={styles.inputLabel}>{t('marital_status')}</Text>
-      <RadioButton.Group
-        value={formData.maritalStatus}
-        onValueChange={(value) => setFormData({ ...formData, maritalStatus: value })}
-      >
-        <View style={styles.radioGroup}>
-          <RadioButton.Item label={t('single')} value="single" />
-          <RadioButton.Item label={t('married')} value="married" />
-          <RadioButton.Item label={t('divorced')} value="divorced" />
-          <RadioButton.Item label={t('widowed')} value="widowed" />
-        </View>
-      </RadioButton.Group>
-    </View>
-  );
-  
-  const renderIdentityTab = () => (
-    <View>
-      <TextInput
-        label={t('id_number')}
-        value={formData.idNumber}
-        onChangeText={(text) => setFormData({ ...formData, idNumber: text })}
-        style={styles.input}
-      />
-      
-      {/* Ajoutez ici d'autres champs comme empreinte digitale, etc. */}
-      
-      {/* Section pour les conjoints si marié */}
-      {formData.maritalStatus === 'married' && (
-        <View>
-          <Text style={styles.sectionTitle}>{t('spouse_information')}</Text>
-          
-          {formData.spouses.map((spouse, index) => (
-            <View key={`spouse-${index}`} style={styles.spouseContainer}>
-              <TextInput
-                label={t('spouse_name')}
-                value={spouse.name}
-                onChangeText={(text) => {
-                  const updatedSpouses = [...formData.spouses];
-                  updatedSpouses[index].name = text;
-                  setFormData({ ...formData, spouses: updatedSpouses });
-                }}
-                style={styles.input}
-              />
-              
-              <TextInput
-                label={t('spouse_id_number')}
-                value={spouse.idNumber}
-                onChangeText={(text) => {
-                  const updatedSpouses = [...formData.spouses];
-                  updatedSpouses[index].idNumber = text;
-                  setFormData({ ...formData, spouses: updatedSpouses });
-                }}
-                style={styles.input}
-              />
-              
-              <Button
-                mode="outlined"
-                icon="minus"
-                onPress={() => {
-                  const updatedSpouses = formData.spouses.filter((_, i) => i !== index);
-                  setFormData({ ...formData, spouses: updatedSpouses });
-                }}
-                style={styles.removeButton}
-              >
-                {t('remove')}
-              </Button>
-            </View>
-          ))}
-          
-          <Button
-            mode="contained"
-            icon="plus"
-            onPress={() => {
-              setFormData({
-                ...formData,
-                spouses: [...formData.spouses, { name: '', idNumber: '' }]
-              });
-            }}
-            style={styles.addButton}
-          >
-            {t('add_spouse')}
-          </Button>
-        </View>
-      )}
-      
-      <TextInput
-        label={t('number_of_children')}
-        value={formData.children.toString()}
-        onChangeText={(text) => {
-          const numChildren = parseInt(text) || 0;
-          setFormData({ ...formData, children: numChildren });
-        }}
-        style={styles.input}
-        keyboardType="numeric"
-      />
-    </View>
-  );
-  
-  const renderContactTab = () => (
-    <View>
-      <TextInput
-        label={t('street_address')}
-        value={formData.address.street}
-        onChangeText={(text) => {
-          setFormData({
-            ...formData,
-            address: { ...formData.address, street: text }
-          });
-        }}
-        style={styles.input}
-      />
-      
-      <TextInput
-        label={t('city')}
-        value={formData.address.city}
-        onChangeText={(text) => {
-          setFormData({
-            ...formData,
-            address: { ...formData.address, city: text }
-          });
-        }}
-        style={styles.input}
-      />
-      
-      <TextInput
-        label={t('postal_code')}
-        value={formData.address.postalCode}
-        onChangeText={(text) => {
-          setFormData({
-            ...formData,
-            address: { ...formData.address, postalCode: text }
-          });
-        }}
-        style={styles.input}
-        keyboardType="numeric"
-      />
-      
-      <TextInput
-        label={t('country')}
-        value={formData.address.country}
-        onChangeText={(text) => {
-          setFormData({
-            ...formData,
-            address: { ...formData.address, country: text }
-          });
-        }}
-        style={styles.input}
-      />
-      
-      <TextInput
-        label={t('phone_number')}
-        value={formData.phoneNumber}
-        onChangeText={(text) => {
-          setFormData({ ...formData, phoneNumber: text });
-        }}
-        style={styles.input}
-        keyboardType="phone-pad"
-      />
-      
-      <Button
-        mode="outlined"
-        icon="map-marker"
-        onPress={() => {
-          // Ouvrir un écran pour sélectionner la position sur une carte
-          Alert.alert(t('feature_coming_soon'));
-        }}
-        style={styles.locationButton}
-      >
-        {t('set_location')}
-      </Button>
-    </View>
-  );
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => navigation.goBack()} />
-        <Appbar.Content title={t('my_profile')} />
-        <Appbar.Action icon="check" onPress={handleSave} disabled={loading} />
-      </Appbar.Header>
-      
-      <SegmentedButtons
-        value={currentTab}
-        onValueChange={setCurrentTab}
-        buttons={[
-          { value: 'personal', label: t('personal') },
-          { value: 'identity', label: t('identity') },
-          { value: 'contact', label: t('contact') }
-        ]}
-        style={styles.tabs}
+      <AppHeader 
+        title={t('user_profile')} 
+        showBack
       />
       
-      <ScrollView style={styles.scrollContent}>
-        {currentTab === 'personal' && renderPersonalInfoTab()}
-        {currentTab === 'identity' && renderIdentityTab()}
-        {currentTab === 'contact' && renderContactTab()}
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.avatarContainer}>
+          <TouchableOpacity onPress={handlePickImage}>
+            {formData.photoURL ? (
+              <Avatar.Image
+                size={120}
+                source={{ uri: formData.photoURL }}
+              />
+            ) : (
+              <Avatar.Text 
+                size={120} 
+                label={formData.displayName?.[0] || 'U'} 
+              />
+            )}
+          </TouchableOpacity>
+          <Button
+            mode="text"
+            onPress={handlePickImage}
+            style={styles.changePhotoButton}
+          >
+            {t('change_photo')}
+          </Button>
+        </View>
+
+        <Text style={styles.sectionTitle}>{t('personal_information')}</Text>
+        
+        <TextInput
+          label={t('full_name')}
+          value={formData.displayName}
+          onChangeText={(text) => setFormData({...formData, displayName: text})}
+          style={styles.input}
+          error={!!errors.displayName}
+        />
+        {errors.displayName && <HelperText type="error">{errors.displayName}</HelperText>}
+        
+        <TextInput
+          label={t('email')}
+          value={formData.email}
+          onChangeText={(text) => setFormData({...formData, email: text})}
+          style={styles.input}
+          disabled={true} // Email usually can't be changed without verification
+          error={!!errors.email}
+        />
+        {errors.email && <HelperText type="error">{errors.email}</HelperText>}
+        
+        <TextInput
+          label={t('phone_number')}
+          value={formData.phoneNumber}
+          onChangeText={(text) => setFormData({...formData, phoneNumber: text})}
+          style={styles.input}
+          keyboardType="phone-pad"
+        />
+        
+        <TextInput
+          label={t('position')}
+          value={formData.position}
+          onChangeText={(text) => setFormData({...formData, position: text})}
+          style={styles.input}
+        />
+
+        <Divider style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>{t('preferences')}</Text>
+        
+        <List.Section>
+          <List.Item
+            title={t('language')}
+            description={formData.language === 'fr' ? 'Français' : 'English'}
+            left={props => <List.Icon {...props} icon="translate" />}
+            right={props => <List.Icon {...props} icon="chevron-right" />}
+            onPress={() => {
+              // Toggle language for demo
+              setFormData({
+                ...formData,
+                language: formData.language === 'fr' ? 'en' : 'fr'
+              });
+            }}
+          />
+        </List.Section>
         
         <Button
           mode="contained"
-          onPress={handleSave}
-          loading={loading}
+          onPress={handleSubmit}
+          loading={saving}
           style={styles.saveButton}
         >
-          {t('save_profile')}
+          {t('save_changes')}
         </Button>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -395,56 +240,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  scrollContent: {
+  scrollView: {
     flex: 1,
     padding: 16,
   },
   avatarContainer: {
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 20,
+  },
+  changePhotoButton: {
+    marginTop: 8,
   },
   input: {
-    marginBottom: 16,
+    marginBottom: 12,
     backgroundColor: 'transparent',
   },
-  inputLabel: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: '#666',
+  saveButton: {
+    marginVertical: 24,
   },
-  segmentedButtons: {
-    marginBottom: 16,
-  },
-  tabs: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-  },
-  radioGroup: {
-    marginBottom: 16,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 16,
-    marginBottom: 8,
-  },
-  spouseContainer: {
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  addButton: {
-    marginVertical: 8,
-  },
-  removeButton: {
-    marginTop: 8,
-  },
-  locationButton: {
-    marginTop: 8,
     marginBottom: 16,
   },
-  saveButton: {
+  divider: {
     marginVertical: 24,
   },
 });

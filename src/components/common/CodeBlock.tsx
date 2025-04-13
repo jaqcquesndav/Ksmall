@@ -1,41 +1,27 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Card, Text, IconButton, useTheme } from 'react-native-paper';
-import * as Clipboard from 'expo-clipboard';
-import { useTranslation } from 'react-i18next';
+import { View, StyleSheet, Text, ScrollView } from 'react-native';
+import { Card, useTheme } from 'react-native-paper';
 
 interface CodeBlockProps {
   code: string;
   language?: string;
 }
 
-const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'plaintext' }) => {
+const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'javascript' }) => {
   const theme = useTheme();
-  const { t } = useTranslation();
-
-  const copyToClipboard = async () => {
-    await Clipboard.setStringAsync(code);
-    alert(t('code_copied'));
-  };
-
+  
   return (
-    <Card style={[styles.container, { backgroundColor: theme.colors.surfaceVariant }]}>
-      <Card.Content>
+    <Card style={styles.container}>
+      <Card.Content style={{ padding: 0 }}>
         <View style={styles.header}>
-          <Text style={[styles.languageLabel, { color: theme.colors.onSurfaceVariant }]}>
-            {language}
-          </Text>
-          <IconButton 
-            icon="content-copy" 
-            size={20}
-            onPress={copyToClipboard}
-            iconColor={theme.colors.onSurfaceVariant}
-          />
+          <Text style={styles.language}>{language}</Text>
         </View>
-        <ScrollView horizontal style={styles.codeScrollView}>
-          <Text style={[styles.codeText, { color: theme.colors.onSurfaceVariant }]}>
-            {code}
-          </Text>
+        <ScrollView horizontal style={styles.scrollContainer}>
+          <ScrollView nestedScrollEnabled style={styles.codeContainer}>
+            <Text style={[styles.code, { color: theme.colors.onSurface }]}>
+              {code}
+            </Text>
+          </ScrollView>
         </ScrollView>
       </Card.Content>
     </Card>
@@ -45,28 +31,31 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'plaintext' }) =
 const styles = StyleSheet.create({
   container: {
     marginVertical: 8,
+    backgroundColor: '#f5f5f5',
     borderRadius: 8,
+    overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#444',
+    backgroundColor: '#e0e0e0',
+    padding: 8,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
-  languageLabel: {
+  language: {
     fontSize: 12,
+    color: '#666',
     fontWeight: 'bold',
-    textTransform: 'uppercase',
   },
-  codeScrollView: {
+  scrollContainer: {
     maxHeight: 300,
   },
-  codeText: {
-    fontFamily: 'Courier',
+  codeContainer: {
+    padding: 12,
+  },
+  code: {
+    fontFamily: 'monospace',
     fontSize: 14,
-    padding: 8,
+    lineHeight: 20,
   },
 });
 

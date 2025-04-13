@@ -83,3 +83,46 @@ export const formatPercentage = (value: number, digitsAfterDecimal: number = 2):
 export const formatNumber = (number: number): string => {
   return new Intl.NumberFormat().format(number);
 };
+
+/**
+ * Format a date in a relative format (e.g., "2 hours ago", "yesterday", etc.)
+ */
+export function formatDateRelative(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  // Less than a minute
+  if (diffInSeconds < 60) {
+    return 'just now';
+  }
+  
+  // Less than an hour
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+  }
+  
+  // Less than a day
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
+  }
+  
+  // Less than a week
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) {
+    if (diffInDays === 1) {
+      return 'yesterday';
+    }
+    return `${diffInDays} days ago`;
+  }
+  
+  // Format as date
+  return date.toLocaleDateString('fr-FR', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}

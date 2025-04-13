@@ -1,337 +1,486 @@
 import * as SQLite from 'expo-sqlite';
-// Remove any direct hook imports like useAuth
-// import { useAuth } from '../context/AuthContext';
+import { Platform } from 'react-native';
 import logger from '../utils/logger';
 
-// Définir les tables et les schémas
-const DATABASE_NAME = 'ksmall.db';
-const DATABASE_VERSION = 1;
-
-interface SQLResult {
+interface QueryResult {
   rows: {
-    _array: any[];
     length: number;
+    item: (idx: number) => any;
+    _array?: any[];
   };
   rowsAffected: number;
   insertId?: number;
 }
 
 class DatabaseService {
-  private db: SQLite.Database | null = null;
-  private isInitialized: boolean = false;
-  private mockDataLoaded: boolean = false;
-  // Store user data directly instead of using hooks
-  private currentUser: any = null;
-
-  constructor() {
-    logger.info('Service de base de données initialisé');
+  private DB_NAME = 'ksmall.db';
+  private DB_VERSION = 1;
+  
+  async getDBConnection(): Promise<SQLite.WebSQLDatabase> {
+    return SQLite.openDatabase(this.DB_NAME);
   }
-
-  // Add a method to set the current user
-  setCurrentUser(user: any) {
-    this.currentUser = user;
-    logger.debug('User set in DatabaseService:', user?.email || 'null');
-  }
-
-  // Replace any useAuth() calls with references to this.currentUser
-  private isUserDemo(): boolean {
-    return this.currentUser?.isDemo === true;
-  }
-
-  /**
-   * Initialise la base de données et crée les tables si nécessaires
-   */
-  async initDatabase(): Promise<boolean> {
-    try {
-      logger.info(`Initialisation de la base de données ${DATABASE_NAME}`);
-
-      // Ouvrir ou créer la base de données
-      this.db = SQLite.openDatabase(DATABASE_NAME);
+  
+  async executeQuery(
+    db: SQLite.WebSQLDatabase,
+    query: string,
+    params: any[] = []
+  ): Promise<[QueryResult | undefined, Error | null]> {
+    return new Promise((resolve) => {
+      logger.debug(`Exécution SQL: ${query}`, { params });
       
-      // Vérifier si la base de données est déjà configurée
-      const versionResult = await this.executeSql(
-        'PRAGMA user_version;'
-      );
-      
-      const currentVersion = versionResult?.[0]?.user_version || 0;
-      logger.debug(`Version actuelle de la base de données: ${currentVersion}`);
-
-      if (currentVersion < DATABASE_VERSION) {
-        logger.info(`Mise à jour de la base de données de la version ${currentVersion} à ${DATABASE_VERSION}`);
-        await this.setupDatabase();
-        
-        // Mettre à jour la version
-        await this.executeSql(`PRAGMA user_version = ${DATABASE_VERSION};`);
-      }
-
-      // Si l'utilisateur est le compte de démo, charger les données de test
-      if (this.isUserDemo() && !this.mockDataLoaded) {
-        await this.loadMockData();
-        this.mockDataLoaded = true;
-      }
-
-      this.isInitialized = true;
-      logger.info('Base de données initialisée avec succès');
-      return true;
-    } catch (error) {
-      logger.error('Erreur lors de l\'initialisation de la base de données', error);
-      return false;
-    }
-  }
-
-  /**
-   * Configure les tables et les données initiales
-   */
-  private async setupDatabase(): Promise<void> {
-    logger.debug('Configuration de la base de données');
-    
-    // Créer les tables nécessaires
-    await this.createTables();
-    
-    // Ajouter des données de démonstration pour le développement
-    if (__DEV__) {
-      await this.insertSampleData();
-    }
-  }
-
-  /**
-   * Crée toutes les tables nécessaires
-   */
-  private async createTables(): Promise<void> {
-    logger.debug('Création des tables');
-
-    // Table des comptes
-    await this.executeSql(`
-      CREATE TABLE IF NOT EXISTS accounts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        balance REAL DEFAULT 0,
-        currency TEXT DEFAULT 'USD',
-        provider TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Table des transactions
-    await this.executeSql(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account_id INTEGER,
-        description TEXT NOT NULL,
-        amount REAL NOT NULL,
-        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        category TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (account_id) REFERENCES accounts(id)
-      );
-    `);
-
-    // Table pour les écritures comptables
-    await this.executeSql(`
-      CREATE TABLE IF NOT EXISTS journal_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        reference TEXT,
-        description TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Table pour les lignes d'écritures
-    await this.executeSql(`
-      CREATE TABLE IF NOT EXISTS journal_lines (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        entry_id INTEGER,
-        account_code TEXT NOT NULL,
-        description TEXT,
-        debit REAL DEFAULT 0,
-        credit REAL DEFAULT 0,
-        tax_code TEXT,
-        FOREIGN KEY (entry_id) REFERENCES journal_entries(id)
-      );
-    `);
-
-    // Table pour les articles d'inventaire
-    await this.executeSql(`
-      CREATE TABLE IF NOT EXISTS inventory_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sku TEXT UNIQUE,
-        name TEXT NOT NULL,
-        description TEXT,
-        quantity REAL DEFAULT 0,
-        price REAL DEFAULT 0,
-        cost REAL DEFAULT 0,
-        category TEXT,
-        location TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-  }
-
-  /**
-   * Charge les données fictives pour le compte de démonstration
-   */
-  private async loadMockData(): Promise<void> {
-    logger.info('Chargement des données de démonstration');
-
-    try {
-      // Vider les tables existantes
-      await this.executeSql('DELETE FROM transactions');
-      await this.executeSql('DELETE FROM accounts');
-      
-      // Insérer des comptes de démonstration
-      await this.executeSql(`
-        INSERT INTO accounts (name, type, balance, currency, provider) VALUES 
-        ('Compte Courant', 'checking', 3750.42, 'EUR', 'BanquePopulaire'),
-        ('Compte Épargne', 'savings', 15230.87, 'EUR', 'BanquePopulaire'),
-        ('Carte Crédit', 'credit', -1245.30, 'EUR', 'Visa'),
-        ('Investissements', 'investment', 8500.00, 'EUR', 'BourseDirect');
-      `);
-      
-      // Insérer des transactions de démonstration
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const lastWeek = new Date(today);
-      lastWeek.setDate(lastWeek.getDate() - 7);
-      
-      await this.executeSql(`
-        INSERT INTO transactions (account_id, description, amount, date, category) VALUES 
-        (1, 'Salaire Mai 2023', 2800.00, ?, 'Revenu'),
-        (1, 'Loyer Appartement', -850.00, ?, 'Logement'),
-        (1, 'Courses Supermarché', -125.42, ?, 'Alimentation'),
-        (1, 'Restaurant Le Gourmet', -78.50, ?, 'Sorties'),
-        (1, 'Facture Électricité', -95.30, ?, 'Factures'),
-        (3, 'Achat Amazon', -149.99, ?, 'Shopping'),
-        (3, 'Abonnement Netflix', -12.99, ?, 'Abonnements'),
-        (1, 'Transfert Épargne', -500.00, ?, 'Transferts'),
-        (2, 'Transfert du Compte Courant', 500.00, ?, 'Transferts'),
-        (1, 'Retrait DAB', -100.00, ?, 'Retraits');
-      `, [
-        lastWeek.toISOString(),
-        lastWeek.toISOString(),
-        yesterday.toISOString(),
-        yesterday.toISOString(),
-        today.toISOString(),
-        yesterday.toISOString(),
-        today.toISOString(),
-        yesterday.toISOString(),
-        yesterday.toISOString(),
-        today.toISOString()
-      ]);
-      
-      logger.info('Données de démonstration chargées avec succès');
-    } catch (error) {
-      logger.error('Erreur lors du chargement des données de démonstration', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Insère des données d'exemple pour le développement
-   */
-  private async insertSampleData(): Promise<void> {
-    logger.debug('Insertion des données d\'exemple');
-    
-    try {
-      // Vérifier si des données existent déjà
-      const existingAccounts = await this.executeSql('SELECT COUNT(*) as count FROM accounts');
-      if (existingAccounts?.[0]?.count > 0) {
-        logger.debug('Les données d\'exemple existent déjà');
-        return;
-      }
-
-      // Insérer des exemples de comptes
-      await this.executeSql(`
-        INSERT INTO accounts (name, type, balance, currency, provider) VALUES 
-        ('Compte Courant', 'checking', 2500.75, 'USD', 'BankOne'),
-        ('Épargne', 'savings', 12750.42, 'USD', 'BankOne'),
-        ('Carte de Crédit', 'credit', -450.30, 'USD', 'CreditCorp'),
-        ('Investissements', 'investment', 5430.20, 'USD', 'InvestFirm');
-      `);
-
-      // Insérer des exemples de transactions
-      await this.executeSql(`
-        INSERT INTO transactions (account_id, description, amount, date, category) VALUES 
-        (1, 'Salaire Avril', 3200.00, '2023-04-25 10:00:00', 'Revenu'),
-        (1, 'Location Appartement', -1200.00, '2023-05-01 09:30:00', 'Logement'),
-        (1, 'Supermarché', -85.42, '2023-05-02 18:20:00', 'Alimentation'),
-        (1, 'Restaurant', -45.80, '2023-05-03 20:15:00', 'Restaurants'),
-        (3, 'Achat Amazon', -120.35, '2023-05-04 12:30:00', 'Shopping');
-      `);
-
-      // Insérer des exemples d'articles d'inventaire
-      await this.executeSql(`
-        INSERT INTO inventory_items (sku, name, description, quantity, price, cost, category, location) VALUES 
-        ('PROD-001', 'Produit A', 'Description produit A', 25, 19.99, 10.50, 'Électronique', 'Entrepôt A'),
-        ('PROD-002', 'Produit B', 'Description produit B', 15, 29.99, 15.75, 'Électronique', 'Entrepôt A'),
-        ('PROD-003', 'Produit C', 'Description produit C', 50, 9.99, 5.25, 'Fournitures', 'Entrepôt B');
-      `);
-
-      logger.debug('Données d\'exemple insérées avec succès');
-    } catch (error) {
-      logger.error('Erreur lors de l\'insertion des données d\'exemple', error);
-    }
-  }
-
-  /**
-   * Exécute une requête SQL et retourne les résultats
-   */
-  async executeSql(sql: string, params: any[] = []): Promise<any[]> {
-    if (!this.db) {
-      throw new Error('Base de données non initialisée');
-    }
-
-    logger.debug(`Exécution SQL: ${sql.slice(0, 100)}${sql.length > 100 ? '...' : ''}`, { params });
-
-    return new Promise((resolve, reject) => {
-      this.db!.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
-          sql, 
+          query,
           params,
-          (_, result) => resolve(result.rows._array),
+          (_, result) => {
+            resolve([result, null]);
+          },
           (_, error) => {
-            logger.error(`Erreur SQL: ${sql}`, error);
-            reject(error);
-            return false;
+            // Create a proper Error from SQLError
+            const sqlError = new Error(error.message);
+            // Copy properties from SQLError to the new Error
+            Object.assign(sqlError, error);
+            
+            logger.error(`Erreur SQL: ${error.message}`, { query, params });
+            resolve([undefined, sqlError]);
+            return true; // Nécessaire pour indiquer que l'erreur a été gérée
           }
         );
       });
     });
   }
-
-  /**
-   * Vérifie si la base de données est initialisée
-   */
-  isDbInitialized(): boolean {
-    return this.isInitialized;
-  }
-
-  /**
-   * Exécute une requête SQL avec gestion robuste des erreurs
-   */
-  async executeQuery(query: string, params: any[] = []): Promise<any[]> {
+  
+  async initDatabase(): Promise<void> {
     try {
-      if (!this.isInitialized) {
-        logger.warn('Tentative d\'exécuter une requête sur une base de données non initialisée');
+      const db = await this.getDBConnection();
+      
+      // Check if database exists and has the right schema
+      let needsInitialization = false;
+      
+      try {
+        // Try to access the users table - if this fails, we need to initialize
+        const [usersTableCheck] = await this.executeQuery(
+          db,
+          'SELECT name FROM sqlite_master WHERE type="table" AND name="users"',
+          []
+        );
         
-        // Tentative d'initialisation automatique
-        const initialized = await this.initDatabase();
-        if (!initialized) {
-          throw new Error('La base de données n\'a pas pu être initialisée');
-        }
+        needsInitialization = !usersTableCheck || usersTableCheck.rows.length === 0;
+        logger.debug(`Database initialization needed: ${needsInitialization}`);
+      } catch (error) {
+        logger.warn("Error checking database schema, will initialize:", error);
+        needsInitialization = true;
       }
       
-      return await this.executeSql(query, params);
-    } catch (error) {
-      logger.error(`Erreur lors de l'exécution de la requête: ${query}`, error);
+      if (needsInitialization) {
+        logger.info("Initializing database from scratch");
+        
+        // Force migration to create all tables
+        await this.runMigration(db, 1);
+        
+        // Set the database version
+        await this.executeQuery(
+          db,
+          `PRAGMA user_version = ${this.DB_VERSION}`,
+          []
+        );
+        
+        // Load demo data now that tables exist
+        await this.loadDemoData(db);
+      }
       
-      return [];
+      logger.info(`Database initialized successfully`);
+    } catch (error) {
+      logger.error(`Database initialization error`, error);
+      throw error;
     }
+  }
+  
+  private async runMigration(
+    db: SQLite.WebSQLDatabase,
+    version: number
+  ): Promise<void> {
+    logger.debug(`Exécution de la migration ${version}`);
+    
+    try {
+      switch (version) {
+        case 1:
+          // Make sure we execute each statement separately for better error handling
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS users (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              display_name TEXT NOT NULL,
+              email TEXT NOT NULL UNIQUE,
+              phone_number TEXT,
+              photo_url TEXT,
+              position TEXT,
+              language TEXT DEFAULT 'fr',
+              is_current INTEGER DEFAULT 0
+            )`,
+            []
+          );
+          
+          logger.info("Table 'users' created successfully");
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS accounts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL,
+              balance REAL DEFAULT 0,
+              currency TEXT DEFAULT 'XOF',
+              provider TEXT
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS transactions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              account_id INTEGER,
+              description TEXT,
+              amount REAL NOT NULL,
+              date TEXT NOT NULL,
+              category TEXT,
+              FOREIGN KEY (account_id) REFERENCES accounts (id)
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS journal_entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              reference TEXT,
+              date TEXT NOT NULL,
+              description TEXT,
+              status TEXT DEFAULT 'pending'
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS journal_entry_lines (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              entry_id INTEGER,
+              account_code TEXT NOT NULL,
+              description TEXT,
+              debit REAL DEFAULT 0,
+              credit REAL DEFAULT 0,
+              FOREIGN KEY (entry_id) REFERENCES journal_entries (id)
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS inventory_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              sku TEXT,
+              category TEXT,
+              subcategory TEXT,
+              quantity INTEGER DEFAULT 0,
+              price REAL DEFAULT 0,
+              cost REAL DEFAULT 0,
+              reorder_point INTEGER DEFAULT 0,
+              image_url TEXT,
+              description TEXT,
+              supplier TEXT,
+              location TEXT
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS notifications (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              message TEXT,
+              type TEXT,
+              is_read INTEGER DEFAULT 0,
+              created_at TEXT NOT NULL
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS user_metrics (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER,
+              metric_name TEXT NOT NULL,
+              value TEXT,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (user_id) REFERENCES users (id)
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS subscription (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER,
+              plan_name TEXT NOT NULL,
+              features TEXT,
+              created_at TEXT NOT NULL,
+              expiry_date TEXT NOT NULL,
+              FOREIGN KEY (user_id) REFERENCES users (id)
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS conversations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              mode TEXT DEFAULT 'regular'
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS messages (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id INTEGER,
+              content TEXT,
+              message_type TEXT NOT NULL,
+              is_user INTEGER NOT NULL,
+              timestamp TEXT NOT NULL,
+              attachments TEXT,
+              additional_data TEXT,
+              FOREIGN KEY (conversation_id) REFERENCES conversations (id)
+            )`,
+            []
+          );
+          
+          // Insert a demo user if not exists
+          const [userExists] = await this.executeQuery(
+            db,
+            'SELECT COUNT(*) as count FROM users WHERE email = ?',
+            ['demo@example.com']
+          );
+          
+          if (!userExists || userExists.rows.item(0).count === 0) {
+            await this.executeQuery(
+              db,
+              `INSERT INTO users (display_name, email, phone_number, position, is_current)
+              VALUES (?, ?, ?, ?, ?)`,
+              ['Utilisateur Démo', 'demo@example.com', '+22500000000', 'Gestionnaire', 1]
+            );
+            logger.info("Demo user created");
+          }
+          
+          break;
+          
+        // Other migrations for future versions
+      }
+    } catch (error) {
+      logger.error("Error during migration:", error);
+      throw error; // Re-throw to handle in the calling function
+    }
+  }
+  
+  private async loadDemoData(db: SQLite.WebSQLDatabase): Promise<void> {
+    logger.info('Chargement des données de démonstration');
+    
+    // Vider les tables existantes pour éviter les doublons
+    await this.executeQuery(db, 'DELETE FROM transactions', []);
+    await this.executeQuery(db, 'DELETE FROM accounts', []);
+    
+    // Créer les comptes de démo
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO accounts (name, type, balance, currency, provider) VALUES
+        ('Compte Courant', 'cash', 1500000, 'XOF', 'Ecobank'),
+        ('Compte Épargne', 'cash', 1000000, 'XOF', 'SGBCI'),
+        ('Clients', 'receivable', 1750000, 'XOF', null),
+        ('Fournisseurs', 'payable', 950000, 'XOF', null)
+      `,
+      []
+    );
+    
+    // Créer un utilisateur démo
+    const [userExists] = await this.executeQuery(
+      db,
+      'SELECT COUNT(*) as count FROM users WHERE email = ?',
+      ['demo@example.com']
+    );
+    
+    if (userExists?.rows?.item(0).count === 0) {
+      await this.executeQuery(
+        db,
+        `
+          INSERT INTO users (display_name, email, phone_number, position, is_current)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        ['Utilisateur Démo', 'demo@example.com', '+22500000000', 'Gestionnaire', 1]
+      );
+    }
+    
+    // Créer des métriques utilisateur
+    await this.executeQuery(
+      db,
+      'DELETE FROM user_metrics',
+      []
+    );
+    
+    const now = new Date().toISOString();
+    
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO user_metrics (user_id, metric_name, value, updated_at)
+        VALUES 
+        (1, 'credit_score', '78', ?),
+        (1, 'esg_rating', 'B+', ?)
+      `,
+      [now, now]
+    );
+    
+    // Créer un abonnement
+    await this.executeQuery(
+      db,
+      'DELETE FROM subscription',
+      []
+    );
+    
+    const expiryDate = new Date();
+    expiryDate.setMonth(expiryDate.getMonth() + 1);
+    
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO subscription (user_id, plan_name, features, created_at, expiry_date)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        1, 
+        'Premium', 
+        JSON.stringify(['Comptabilité avancée', 'Support prioritaire', 'Rapports illimités', 'API accès']),
+        now,
+        expiryDate.toISOString()
+      ]
+    );
+    
+    // Créer quelques transactions démo
+    const dates = [];
+    const futureDate = new Date();
+    for (let i = 0; i < 10; i++) {
+      futureDate.setDate(futureDate.getDate() + (i % 2 === 0 ? 6 : 1));
+      dates.push(futureDate.toISOString());
+    }
+    
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO transactions (account_id, description, amount, date, category) VALUES
+        (1, 'Paiement client ABC', 350000, ?, 'revenue'),
+        (1, 'Achat fournitures', -75000, ?, 'expense'),
+        (2, 'Transfert épargne', 200000, ?, 'transfer'),
+        (1, 'Paiement fournisseur XYZ', -120000, ?, 'expense'),
+        (1, 'Vente de services', 450000, ?, 'revenue'),
+        (3, 'Facture client DEF', 350000, ?, 'revenue'),
+        (4, 'Facture fournisseur UVW', 170000, ?, 'expense'),
+        (1, 'Paiement salaires', -650000, ?, 'expense'),
+        (1, 'Frais bancaires', -15000, ?, 'expense'),
+        (3, 'Contrat client GHI', 500000, ?, 'revenue')
+      `,
+      dates
+    );
+    
+    // Créer des écritures comptables démo
+    await this.executeQuery(
+      db,
+      'DELETE FROM journal_entries',
+      []
+    );
+    
+    await this.executeQuery(
+      db,
+      'DELETE FROM journal_entry_lines',
+      []
+    );
+    
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO journal_entries (reference, date, description, status) VALUES
+        ('JE-2023-001', '2023-10-01', 'Achat de matériel informatique', 'validated'),
+        ('JE-2023-002', '2023-10-05', 'Paiement de loyer', 'validated'),
+        ('JE-2023-003', '2023-10-10', 'Vente de marchandises', 'validated'),
+        ('JE-2023-004', '2023-10-15', 'Paiement de salaires', 'pending')
+      `,
+      []
+    );
+    
+    // Obtenir les IDs des écritures insérées
+    const [entriesResult] = await this.executeQuery(
+      db,
+      'SELECT id FROM journal_entries ORDER BY id',
+      []
+    );
+    
+    if (entriesResult?.rows?.length) {
+      const entries = [];
+      for (let i = 0; i < entriesResult.rows.length; i++) {
+        entries.push(entriesResult.rows.item(i).id);
+      }
+      
+      await this.executeQuery(
+        db,
+        `
+          INSERT INTO journal_entry_lines (entry_id, account_code, description, debit, credit) VALUES
+          (?, '24000000', 'Matériel informatique', 1200000, 0),
+          (?, '52000000', 'Banque', 0, 1200000),
+          (?, '61300000', 'Loyers', 450000, 0),
+          (?, '52000000', 'Banque', 0, 450000),
+          (?, '41000000', 'Clients', 1800000, 0),
+          (?, '70000000', 'Ventes', 0, 1800000),
+          (?, '64000000', 'Charges de personnel', 2500000, 0),
+          (?, '52000000', 'Banque', 0, 2500000)
+        `,
+        [
+          entries[0], entries[0],
+          entries[1], entries[1],
+          entries[2], entries[2],
+          entries[3], entries[3]
+        ]
+      );
+    }
+    
+    // Créer des articles de stock démo
+    await this.executeQuery(
+      db,
+      'DELETE FROM inventory_items',
+      []
+    );
+    
+    await this.executeQuery(
+      db,
+      `
+        INSERT INTO inventory_items (name, sku, category, subcategory, quantity, price, cost, reorder_point, supplier, location, description) VALUES
+        ('Ordinateur portable Dell XPS', 'DELL-XPS-15', 'Informatique', 'Ordinateurs', 12, 1200000, 980000, 5, 'Dell Afrique', 'Magasin principal', 'Ordinateur portable haute performance avec Core i7'),
+        ('Écran Dell 27"', 'DELL-P2720D', 'Informatique', 'Écrans', 8, 320000, 240000, 3, 'Dell Afrique', 'Magasin principal', 'Écran QHD 27 pouces avec support ergonomique'),
+        ('Chaise de bureau ergonomique', 'CHAIR-ERGO-01', 'Mobilier', 'Chaises', 15, 120000, 85000, 5, 'MobiPlus', 'Entrepôt B', 'Chaise ergonomique avec support lombaire'),
+        ('Bureau réglable en hauteur', 'DESK-ADJ-02', 'Mobilier', 'Bureaux', 5, 380000, 290000, 2, 'MobiPlus', 'Entrepôt B', 'Bureau réglable électriquement'),
+        ('Papier A4 (Carton)', 'PAPER-A4-BOX', 'Fournitures', 'Papeterie', 24, 25000, 18000, 10, 'Office Plus', 'Réserve fournitures', 'Carton de 5 ramettes de papier A4')
+      `,
+      []
+    );
+    
+    logger.info('Données de démonstration chargées avec succès');
   }
 }
 

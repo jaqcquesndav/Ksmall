@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Button, Card, Chip, Divider, ProgressBar } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../../navigation/types';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/common/AppHeader';
 import { inventoryMockData } from '../../data/mockData';
+import { MainStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<MainStackParamList, 'ProductDetails'>;
+type ProductDetailsRouteProp = RouteProp<MainStackParamList, 'ProductDetails'>;
 
-const ProductDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+const ProductDetailsScreen: React.FC = () => {
   const { t } = useTranslation();
+  const navigation = useNavigation();
+  const route = useRoute<ProductDetailsRouteProp>();
   const { productId } = route.params;
   
   // Find the product in mock data

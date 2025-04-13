@@ -2,31 +2,73 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, Card, List, Chip, ActivityIndicator } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
-import { MainStackParamList } from '../../navigation/types';
+import { useMainNavigation } from '../../hooks/useAppNavigation';
 import AppHeader from '../../components/common/AppHeader';
-import { accountingMockData } from '../../data/mockData';
+import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
 
-const AccountingScreen = () => {
+const AccountingScreen: React.FC = () => {
   const { t } = useTranslation();
-  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
-  const [loading, setLoading] = useState(true);
-  const [accountingData, setAccountingData] = useState<any>(null);
+  const navigation = useMainNavigation();
+  const [isLoading, setIsLoading] = useState(true);
+  const [accountData, setAccountData] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('transactions');
 
   useEffect(() => {
-    setTimeout(() => {
-      setAccountingData(accountingMockData);
-      setLoading(false);
-    }, 1000);
+    const loadAccountingData = async () => {
+      try {
+        logger.info("Loading accounting data");
+        setIsLoading(true);
+
+        const db = await DatabaseService.getDBConnection();
+
+        const [tables] = await DatabaseService.executeQuery(
+          db,
+          "SELECT name FROM sqlite_master WHERE type='table'",
+          []
+        );
+
+        if (tables && tables.rows.length > 0) {
+          logger.debug("Database tables:");
+          for (let i = 0; i < tables.rows.length; i++) {
+            logger.debug(`- ${tables.rows.item(i).name}`);
+          }
+        }
+
+        const [accountsResult] = await DatabaseService.executeQuery(
+          db,
+          'SELECT * FROM accounts ORDER BY name',
+          []
+        );
+
+        if (accountsResult && accountsResult.rows.length > 0) {
+          const accounts = [];
+          for (let i = 0; i < accountsResult.rows.length; i++) {
+            accounts.push(accountsResult.rows.item(i));
+          }
+          setAccountData(accounts);
+        }
+
+      } catch (error) {
+        logger.error("Error loading accounting data:", error);
+        setAccountData([
+          { id: 1, name: 'Compte Bancaire', type: 'cash', balance: 1500000 },
+          { id: 2, name: 'Caisse', type: 'cash', balance: 250000 },
+          { id: 3, name: 'Clients', type: 'receivable', balance: 750000 }
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadAccountingData();
   }, []);
 
-  const handleJournalEntryPress = (entryId: string) => {
+  const handleNavigateToEntry = (entryId: string) => {
     navigation.navigate('JournalEntryDetails', { entryId });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <AppHeader title={t('accounting')} />
@@ -75,36 +117,7 @@ const AccountingScreen = () => {
             
             <Card style={styles.card}>
               <Card.Content>
-                {accountingData.journalEntries.map((entry: any) => (
-                  <View key={entry.id}>
-                    <List.Item
-                      title={entry.description}
-                      description={`${entry.date} • ${entry.reference}`}
-                      left={props => <List.Icon {...props} icon="notebook" />}
-                      right={props => (
-                        <View style={styles.entryStatusContainer}>
-                          <Text style={styles.entryAmount}>
-                            ${entry.lines.reduce((sum: number, line: any) => sum + line.debit, 0).toLocaleString()}
-                          </Text>
-                          <Chip
-                            compact
-                            mode="flat"
-                            style={[
-                              styles.statusChip,
-                              { backgroundColor: entry.status === 'validated' ? '#E8F5E9' : '#FFF3E0' }
-                            ]}
-                          >
-                            {entry.status === 'validated' ? t('validated') : t('pending')}
-                          </Chip>
-                        </View>
-                      )}
-                      onPress={() => handleJournalEntryPress(entry.id)}
-                    />
-                    {accountingData.journalEntries.indexOf(entry) < accountingData.journalEntries.length - 1 && (
-                      <View style={styles.listDivider} />
-                    )}
-                  </View>
-                ))}
+                <Text>Card content here</Text>
               </Card.Content>
             </Card>
           </View>
@@ -145,18 +158,16 @@ const AccountingScreen = () => {
             <Card style={styles.card}>
               <Card.Title title={t('chart_of_accounts')} />
               <Card.Content>
-                {accountingData.chartOfAccounts
-                  .filter((account: any) => account.type === 'header')
-                  .map((header: any) => (
-                    <View key={header.code}>
-                      <List.Item
-                        title={header.name}
-                        description={header.code}
-                        left={props => <List.Icon {...props} icon="folder" />}
-                        onPress={() => {}}
-                      />
-                    </View>
-                  ))}
+                {accountData.map((account: any) => (
+                  <View key={account.id}>
+                    <List.Item
+                      title={account.name}
+                      description={`Balance: $${account.balance.toLocaleString()}`}
+                      left={props => <List.Icon {...props} icon="folder" />}
+                      onPress={() => {}}
+                    />
+                  </View>
+                ))}
               </Card.Content>
             </Card>
           </View>
@@ -207,16 +218,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     marginVertical: 8,
     marginLeft: 56,
-  },
-  entryStatusContainer: {
-    alignItems: 'flex-end',
-  },
-  entryAmount: {
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statusChip: {
-    height: 24,
   },
 });
 

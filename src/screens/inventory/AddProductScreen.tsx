@@ -6,12 +6,12 @@ import {
 } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/types';
 import AppHeader from '../../components/common/AppHeader';
 import { inventoryMockData } from '../../data/mockData';
 
-type Props = NativeStackScreenProps<MainStackParamList, 'AddProduct'>;
+type AddProductRouteProp = RouteProp<MainStackParamList, 'AddProduct'>;
 
 interface ProductFormData {
   name: string;
@@ -28,7 +28,12 @@ interface ProductFormData {
   imageUrl: string | null;
 }
 
-const AddProductScreen: React.FC<Props> = ({ navigation }) => {
+const AddProductScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const route = useRoute<AddProductRouteProp>();
+  const productId = route.params?.productId;
+  const categoryId = route.params?.categoryId;
+
   const { t } = useTranslation();
   
   const [formData, setFormData] = useState<ProductFormData>({
