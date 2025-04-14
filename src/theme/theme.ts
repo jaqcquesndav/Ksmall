@@ -2,6 +2,20 @@ import { MD3LightTheme } from 'react-native-paper';
 import { DefaultTheme as NavigationDefaultTheme } from '@react-navigation/native';
 import { Platform } from 'react-native';
 
+// Extend MD3Colors to include our custom colors
+declare global {
+  namespace ReactNativePaper {
+    interface MD3Colors {
+      success: string;
+      warning: string;
+      successContainer: string;
+      warningContainer: string;
+      onSuccessContainer: string;
+      onWarningContainer: string;
+    }
+  }
+}
+
 // Définition de notre palette de couleurs basée sur les variables CSS
 const colors = {
   // Couleurs principales

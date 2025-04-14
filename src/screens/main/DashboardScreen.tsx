@@ -9,6 +9,11 @@ import Chart from '../../components/common/Chart';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+// Import des nouveaux composants et données
+import SubscriptionStatusWidget from '../../components/dashboard/SubscriptionStatusWidget';
+import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
+import { getRecentTransactions } from '../../data/transactionsMockData';
+
 const DashboardScreen = () => {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -32,20 +37,19 @@ const DashboardScreen = () => {
     receivables: 1750000,
     payables: 950000
   });
-  const [subscriptionInfo, setSubscriptionInfo] = useState({
-    plan: 'Premium',
-    expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    features: ['Comptabilité avancée', 'Support prioritaire', 'Rapports illimités', 'API accès']
-  });
+  
+  // Données des transactions récentes
+  const [recentTransactions, setRecentTransactions] = useState([]);
   
   useEffect(() => {
-    // Charger les données depuis la base de données SQLite
+    // Charger les transactions récentes
+    setRecentTransactions(getRecentTransactions(5));
+    
+    // Charger les autres données depuis la base de données SQLite
     const loadDashboardData = async () => {
       try {
-        // Exemple de requête pour obtenir les données
         const db = await DatabaseService.getDBConnection();
         
-        // Requête pour la cote de crédit
         const [creditScoreResult] = await DatabaseService.executeQuery(
           db,
           'SELECT value FROM user_metrics WHERE metric_name = ?',
@@ -55,7 +59,6 @@ const DashboardScreen = () => {
           setCreditScore(creditScoreResult.rows.item(0).value);
         }
         
-        // Requête pour la note ESG
         const [esgResult] = await DatabaseService.executeQuery(
           db,
           'SELECT value FROM user_metrics WHERE metric_name = ?',
@@ -65,7 +68,6 @@ const DashboardScreen = () => {
           setEsgRating(esgResult.rows.item(0).value);
         }
         
-        // Requête pour les soldes de compte
         const [balancesResult] = await DatabaseService.executeQuery(
           db,
           'SELECT account_type, SUM(balance) as total FROM accounts GROUP BY account_type',
@@ -82,11 +84,10 @@ const DashboardScreen = () => {
           setAccountBalances(newBalances);
         }
         
-        // Requête pour les informations d'abonnement
         const [subscriptionResult] = await DatabaseService.executeQuery(
           db,
           'SELECT * FROM subscription WHERE user_id = ? ORDER BY expiry_date DESC LIMIT 1',
-          [1] // Supposant que l'ID utilisateur est 1
+          [1]
         );
         if (subscriptionResult && subscriptionResult.rows.length > 0) {
           const sub = subscriptionResult.rows.item(0);
@@ -104,11 +105,10 @@ const DashboardScreen = () => {
     loadDashboardData();
   }, []);
 
-  // Fonctions pour les couleurs des scores
   const getCreditScoreColor = (score) => {
-    if (score >= 80) return '#4CAF50'; // Vert
-    if (score >= 60) return '#FFC107'; // Jaune
-    return '#F44336'; // Rouge
+    if (score >= 80) return '#4CAF50';
+    if (score >= 60) return '#FFC107';
+    return '#F44336';
   };
   
   const getESGRatingColor = (rating) => {
@@ -244,51 +244,16 @@ const DashboardScreen = () => {
                   )}
                 </Card.Content>
               </Card>
-              
-              {/* Section Abonnement - Togglable */}
-              <Card style={[styles.innerCard, !showSubscription && styles.collapsedCard]}>
-                <Card.Content>
-                  <TouchableOpacity 
-                    onPress={() => setShowSubscription(!showSubscription)}
-                    style={styles.cardHeader}
-                  >
-                    <Title style={styles.innerCardTitle}>{t('subscription_status')}</Title>
-                    <IconButton 
-                      icon={showSubscription ? "chevron-up" : "chevron-down"} 
-                      size={20} 
-                      onPress={() => setShowSubscription(!showSubscription)} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {showSubscription && (
-                    <View style={styles.subscriptionContainer}>
-                      <View style={styles.subscriptionHeader}>
-                        <View>
-                          <Text style={styles.subscriptionPlanName}>{subscriptionInfo.plan}</Text>
-                          <Text style={styles.subscriptionExpiry}>
-                            {t('expires')}: {format(subscriptionInfo.expiryDate, 'dd MMMM yyyy', {locale: fr})}
-                          </Text>
-                        </View>
-                        <Button mode="contained">{t('upgrade')}</Button>
-                      </View>
-                      
-                      <Divider style={styles.divider} />
-                      
-                      <Text style={styles.featureTitle}>{t('included_features')}:</Text>
-                      {subscriptionInfo.features.map((feature, index) => (
-                        <View key={`feature-${index}`} style={styles.featureItem}>
-                          <MaterialCommunityIcons name="check-circle" size={18} color={theme.colors.primary} />
-                          <Text style={styles.featureText}>{feature}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </Card.Content>
-              </Card>
             </Card.Content>
           </Card>
           
-          {/* Section Transactions Récentes - Togglable */}
+          {/* Widget Statut de l'Abonnement avec Tokens */}
+          <SubscriptionStatusWidget 
+            collapsed={!showSubscription} 
+            onToggleCollapse={() => setShowSubscription(!showSubscription)} 
+          />
+          
+          {/* Widget des transactions récentes */}
           <Card style={styles.card}>
             <Card.Content>
               <TouchableOpacity 
@@ -304,9 +269,7 @@ const DashboardScreen = () => {
               </TouchableOpacity>
               
               {showTransactions && (
-                <View style={styles.transactionsContainer}>
-                  {/* Contenu des transactions récentes */}
-                </View>
+                <RecentTransactionsWidget transactions={recentTransactions} />
               )}
             </Card.Content>
           </Card>
@@ -650,3 +613,7 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardScreen;
+
+function setSubscriptionInfo(arg0: { plan: any; expiryDate: Date; features: any; }) {
+    throw new Error('Function not implemented.');
+}

@@ -114,7 +114,7 @@ const UserProfileScreen: React.FC = () => {
     try {
       // Fix the type issue by matching properties in the User interface
       await UserService.updateUserProfile({
-        id: user?.id,
+        id: typeof user?.id === 'string' ? user.id : '',
         displayName: formData.displayName,
         phoneNumber: formData.phoneNumber,
         photoURL: formData.photoURL,

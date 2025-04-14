@@ -1,20 +1,17 @@
 /**
- * Format a number as currency
- * 
- * @param amount The amount to format
- * @param currencyCode The currency code (default: USD)
- * @returns Formatted currency string
+ * Formatte un montant en devise
+ * @param amount - Montant à formater
+ * @param currency - Devise (par défaut: 'XOF')
+ * @param locale - Locale à utiliser (par défaut: 'fr-FR')
  */
-export const formatCurrency = (amount: number, currencyCode: string = 'USD'): string => {
-  const formatter = new Intl.NumberFormat(undefined, {
+export function formatCurrency(amount: number, currency: string = 'XOF', locale: string = 'fr-FR'): string {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: currencyCode,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-  return formatter.format(amount);
-};
+    currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
+}
 
 /**
  * Format a date string
@@ -75,14 +72,13 @@ export const formatPercentage = (value: number, digitsAfterDecimal: number = 2):
 };
 
 /**
- * Format a number with thousands separators
- * 
- * @param number The number to format
- * @returns Formatted number string with thousands separators
+ * Formatte un nombre avec des séparateurs de milliers
+ * @param num - Nombre à formater
+ * @param locale - Locale à utiliser (par défaut: 'fr-FR')
  */
-export const formatNumber = (number: number): string => {
-  return new Intl.NumberFormat().format(number);
-};
+export function formatNumber(num: number, locale: string = 'fr-FR'): string {
+  return new Intl.NumberFormat(locale).format(num);
+}
 
 /**
  * Format a date in a relative format (e.g., "2 hours ago", "yesterday", etc.)

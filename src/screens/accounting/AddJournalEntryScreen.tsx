@@ -132,7 +132,7 @@ const AddJournalEntryScreen: React.FC = () => {
               <Text style={styles.accountHeader}>{t('account')}</Text>
               <Text style={styles.amountHeader}>{t('debit')}</Text>
               <Text style={styles.amountHeader}>{t('credit')}</Text>
-              <Text style={styles.actionHeader}>{/* Action column */}</Text>
+              <Text style={styles.actionHeader} children={''}>{/* Action column */}</Text>
             </View>
             
             <Divider style={{ backgroundColor: theme.colors.outline }} />

@@ -21,7 +21,7 @@ export type AuthStackParamList = {
 
 // Main stack param list
 export type MainStackParamList = {
-  MainTabs: undefined; // Important: C'est "MainTabs", pas "Tabs"
+  MainTabs: undefined | { screen: string; params?: object };
   Notifications: undefined;
   UserProfile: undefined;
   BusinessProfile: undefined;
@@ -38,15 +38,19 @@ export type MainStackParamList = {
   HelpSupport: undefined;
   About: undefined;
   
+  // New screens for subscription and tokens
+  Subscriptions: undefined;
+  TokenPurchase: undefined;
+  
   // Accounting screens
   JournalEntryDetails: { entryId: string };
-  AddJournalEntry: undefined | { draftId?: string };
+  AddJournalEntry: { draftId?: string };
   AccountDetails: { accountId: string };
   
   // Inventory screens
   ProductDetails: { productId: string };
   TransactionDetails: { transactionId: string };
-  AddProduct: undefined | { productId?: string; categoryId?: string };
+  AddProduct: { productId?: string; categoryId?: string };
   StockAdjustment: { productId: string };
 };
 
