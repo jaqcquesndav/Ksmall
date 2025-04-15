@@ -30,17 +30,17 @@ const Stack = createStackNavigator<RootStackParamList>();
 const AccountingNavigator = () => {
   return (
     <Stack.Navigator 
-      initialRouteName="AccountingDashboard"
+      initialRouteName="AccountingMain"
       screenOptions={{
         headerShown: false
       }}
     >
       <Stack.Screen 
-        name="AccountingDashboard" 
-        component={AccountingDashboardScreen} 
+        name="AccountingMain" 
+        component={AccountingScreen}
         options={{ animationEnabled: true }}
       />
-      <Stack.Screen name="AccountingMain" component={AccountingScreen} />
+      <Stack.Screen name="AccountingDashboard" component={AccountingDashboardScreen} />
       <Stack.Screen name="JournalEntry" component={JournalEntryScreen} />
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
       <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />

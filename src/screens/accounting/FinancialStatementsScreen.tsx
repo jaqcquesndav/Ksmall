@@ -172,7 +172,7 @@ const FinancialStatementsScreen: React.FC = () => {
   
   return (
     <View style={styles.container}>
-      <AppHeader title="États Financiers SYSCOHADA" onBack={() => navigation.goBack()} />
+      <AppHeader title="États Financiers SYSCOHADA" onBack={() => navigation.navigate('AccountingMain')} />
       
       <ScrollView style={styles.content}>
         <List.Section>

@@ -504,7 +504,7 @@ const LedgerScreen: React.FC = () => {
     <View style={styles.container}>
       <AppHeader 
         title="Grand Livre" 
-        onBack={() => navigation.goBack()}
+        onBack={() => navigation.navigate('AccountingMain')}
       />
       
       <View style={styles.filtersContainer}>

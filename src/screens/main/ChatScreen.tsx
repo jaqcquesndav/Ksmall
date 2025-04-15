@@ -31,7 +31,6 @@ import DynamicResponseBuilder, {
 } from '../../components/chat/DynamicResponseBuilder';
 import ModeSelector, { CHAT_MODES } from '../../components/chat/ModeSelector';
 import ChatOptions from '../../components/chat/ChatOptions';
-import ChatPromptSuggestions from '../../components/chat/ChatPromptSuggestions';
 import VoiceInputModal from '../../components/chat/VoiceInputModal';
 import { JournalEntry } from '../../components/accounting/DynamicJournalEntryWidget';
 import { InventoryData } from '../../components/chat/DynamicResponseBuilder';
@@ -477,13 +476,6 @@ const ChatScreen: React.FC = () => {
           />
         </View>
       </View>
-
-      <ChatPromptSuggestions 
-        mode={chatMode} 
-        onSelectPrompt={(prompt) => {
-          setInputText(prompt);
-        }} 
-      />
 
       <FlatList
         data={messages}

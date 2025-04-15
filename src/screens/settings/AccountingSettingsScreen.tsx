@@ -111,7 +111,7 @@ const AccountingSettingsScreen: React.FC = () => {
     <View style={styles.container}>
       <AppHeader 
         title={t('accounting_settings')} 
-        onBack={() => navigation.goBack()} 
+        onBack={() => navigation.navigate('AccountingMain')} 
       />
       
       {loading ? (

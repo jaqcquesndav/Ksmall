@@ -435,7 +435,7 @@ const JournalEntryScreen: React.FC = () => {
     <View style={styles.container}>
       <AppHeader 
         title="Journal Comptable SYSCOHADA" 
-        onBack={() => navigation.goBack()}
+        onBack={() => navigation.navigate('AccountingMain')}
         rightAction={renderRightComponent()}
       />
       
