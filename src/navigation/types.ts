@@ -8,6 +8,43 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
+  // Comptabilité - Ajout des types pour AccountingNavigator
+  AccountingDashboard: undefined;
+  AccountingMain: undefined;
+  JournalEntry: undefined;
+  JournalEntryDetails: { entryId: string };
+  AddJournalEntry: { draftId?: string };
+  Ledger: undefined;
+  AccountDetails: { accountId: string };
+  TransactionDetails: { transactionId: string };
+  FinancialStatements: undefined;
+  ReportGenerator: { reportType?: string; period?: { start: string; end: string } };
+  // Paramètres comptables
+  AccountingSettings: undefined;
+  FiscalYear: undefined;
+  ChartOfAccounts: undefined;
+  TaxSettings: undefined;
+  ReportFormat: undefined;
+  DisplayPreferences: undefined;
+  DataImport: undefined;
+  DataExport: undefined;
+  BackupRestore: undefined;
+  // Finance rapide
+  FinanceRequest: { 
+    type: string; 
+    creditScore?: number;
+  };
+  FinancePayment: { 
+    type: string; 
+    paymentMethod?: string;
+    financialInstitution?: string;
+  };
+  FinanceInvestment: { 
+    type: string;
+    financialInstitution?: string; 
+    isPublic?: boolean;
+  };
+  BondIssuance: undefined;
 };
 
 // Authentication stack param list
@@ -46,12 +83,33 @@ export type MainStackParamList = {
   JournalEntryDetails: { entryId: string };
   AddJournalEntry: { draftId?: string };
   AccountDetails: { accountId: string };
+  AccountingDashboard: undefined;
+  Ledger: undefined;
+  FinancialStatements: undefined;
+  ReportGenerator: { reportType?: string; period?: { start: string; end: string } };
   
   // Inventory screens
   ProductDetails: { productId: string };
   TransactionDetails: { transactionId: string };
   AddProduct: { productId?: string; categoryId?: string };
   StockAdjustment: { productId: string };
+  
+  // Finance screens
+  FinanceRequest: { 
+    type: string; 
+    creditScore?: number;
+  };
+  FinancePayment: { 
+    type: string; 
+    paymentMethod?: string;
+    financialInstitution?: string;
+  };
+  FinanceInvestment: { 
+    type: string;
+    financialInstitution?: string; 
+    isPublic?: boolean;
+  };
+  BondIssuance: undefined;
 };
 
 // Main tab navigator param list

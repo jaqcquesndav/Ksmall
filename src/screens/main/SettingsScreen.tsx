@@ -45,6 +45,24 @@ const SettingsScreen: React.FC = () => {
         <Divider />
         
         <List.Section>
+          <List.Subheader>{t('subscription')}</List.Subheader>
+          <List.Item
+            title={t('manage_subscription')}
+            description={t('subscription_management_desc')}
+            left={props => <List.Icon {...props} icon="star" />}
+            onPress={() => handleNavigateToSettings('Subscriptions')}
+          />
+          <List.Item
+            title={t('buy_tokens')}
+            description={t('token_purchase_desc')}
+            left={props => <List.Icon {...props} icon="currency-usd" />}
+            onPress={() => handleNavigateToSettings('TokenPurchase')}
+          />
+        </List.Section>
+        
+        <Divider />
+        
+        <List.Section>
           <List.Subheader>{t('payment')}</List.Subheader>
           <List.Item
             title={t('payment_methods')}

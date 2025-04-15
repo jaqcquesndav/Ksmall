@@ -68,6 +68,10 @@ const AccountingScreen: React.FC = () => {
     navigation.navigate('JournalEntryDetails', { entryId });
   };
 
+  const handleNewEntry = () => {
+    navigation.navigate('AddJournalEntry');
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -110,7 +114,7 @@ const AccountingScreen: React.FC = () => {
           <View>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t('journal_entries')}</Text>
-              <Button mode="contained-tonal" onPress={() => {/* Navigate to create new entry */}}>
+              <Button mode="contained-tonal" onPress={handleNewEntry}>
                 {t('new_entry')}
               </Button>
             </View>

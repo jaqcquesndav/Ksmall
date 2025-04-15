@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
+import { BondIssuance, BondPayment } from '../hooks/useBondIssuances';
 
 interface QueryResult {
   rows: {
@@ -13,6 +14,9 @@ interface QueryResult {
 }
 
 class DatabaseService {
+  async getDatabase(): Promise<SQLite.WebSQLDatabase> {
+    return this.getDBConnection();
+  }
   private DB_NAME = 'ksmall.db';
   private DB_VERSION = 1;
   
@@ -264,6 +268,74 @@ class DatabaseService {
             []
           );
           
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS bond_issuances (
+              id TEXT PRIMARY KEY,
+              issuer_id TEXT NOT NULL,
+              issuance_date TEXT NOT NULL,
+              maturity_date TEXT NOT NULL,
+              amount REAL NOT NULL,
+              interest_rate REAL NOT NULL,
+              status TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS bond_payments (
+              id TEXT PRIMARY KEY,
+              issuance_id TEXT NOT NULL,
+              payment_date TEXT NOT NULL,
+              payment_amount REAL NOT NULL,
+              payment_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (issuance_id) REFERENCES bond_issuances (id)
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS investments (
+              id TEXT PRIMARY KEY,
+              type TEXT NOT NULL,
+              amount REAL NOT NULL,
+              term INTEGER NOT NULL,
+              financialInstitution TEXT NOT NULL,
+              isPublic INTEGER NOT NULL,
+              interestRate REAL NOT NULL,
+              date TEXT NOT NULL,
+              status TEXT NOT NULL,
+              interestAccrued REAL NOT NULL,
+              maturityDate TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )`,
+            []
+          );
+          
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS investment_income (
+              id TEXT PRIMARY KEY,
+              investment_id TEXT NOT NULL,
+              income_date TEXT NOT NULL,
+              income_amount REAL NOT NULL,
+              income_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (investment_id) REFERENCES investments (id)
+            )`,
+            []
+          );
+          
           // Insert a demo user if not exists
           const [userExists] = await this.executeQuery(
             db,
@@ -481,6 +553,630 @@ class DatabaseService {
     );
     
     logger.info('Données de démonstration chargées avec succès');
+  }
+
+  // Méthode pour initialiser les tables comptables
+  async initAccountingTables(): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Table des comptes
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS accounting_accounts (
+            id TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            balance REAL DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT
+          );
+        `);
+      });
+      
+      // Table des exercices fiscaux
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS fiscal_years (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            is_current INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+      });
+      
+      // Table des transactions
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS accounting_transactions (
+            id TEXT PRIMARY KEY,
+            reference TEXT NOT NULL,
+            date TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL,
+            fiscal_year_id TEXT,
+            total REAL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (fiscal_year_id) REFERENCES fiscal_years (id)
+          );
+        `);
+      });
+      
+      // Vérifier si la colonne "total" existe dans la table accounting_transactions
+      // et l'ajouter si elle n'existe pas encore
+      const [columnInfo, columnError] = await this.executeQuery(
+        db,
+        `PRAGMA table_info(accounting_transactions);`,
+        []
+      );
+      
+      if (columnInfo) {
+        let totalColumnExists = false;
+        for (let i = 0; i < columnInfo.rows.length; i++) {
+          if (columnInfo.rows.item(i).name === 'total') {
+            totalColumnExists = true;
+            break;
+          }
+        }
+        
+        if (!totalColumnExists) {
+          logger.info('Ajout de la colonne "total" à la table accounting_transactions');
+          await this.executeQuery(
+            db,
+            `ALTER TABLE accounting_transactions ADD COLUMN total REAL DEFAULT 0;`,
+            []
+          );
+        }
+      }
+      
+      // Table des entrées comptables (lignes de transactions)
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS accounting_entries (
+            id TEXT PRIMARY KEY,
+            transaction_id TEXT NOT NULL,
+            account_code TEXT NOT NULL,
+            description TEXT,
+            debit REAL DEFAULT 0,
+            credit REAL DEFAULT 0,
+            created_at TEXT,
+            FOREIGN KEY (transaction_id) REFERENCES accounting_transactions (id) ON DELETE CASCADE
+          );
+        `);
+      });
+      
+      // Table des rapports
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS accounting_reports (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          );
+        `);
+      });
+      
+      // Table des pièces jointes
+      await db.transaction(tx => {
+        tx.executeSql(`
+          CREATE TABLE IF NOT EXISTS accounting_attachments (
+            id TEXT PRIMARY KEY,
+            transaction_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            FOREIGN KEY (transaction_id) REFERENCES accounting_transactions (id) ON DELETE CASCADE
+          );
+        `);
+      });
+      
+      // Indices pour améliorer les performances
+      await db.transaction(tx => {
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_accounts_code ON accounting_accounts (code);');
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_fiscal_years_current ON fiscal_years (is_current);');
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_transactions_date ON accounting_transactions (date);');
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_transactions_fiscal_year ON accounting_transactions (fiscal_year_id);');
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_entries_transaction_id ON accounting_entries (transaction_id);');
+        tx.executeSql('CREATE INDEX IF NOT EXISTS idx_entries_account_code ON accounting_entries (account_code);');
+      });
+      
+      console.log('Tables comptables initialisées avec succès');
+    } catch (error) {
+      console.error('Erreur lors de l\'initialisation des tables comptables:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mettre à jour les transactions existantes pour calculer le total
+   */
+  async updateTransactionsWithTotal(): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Vérifier si la colonne "total" existe dans la table accounting_transactions
+      // et l'ajouter si elle n'existe pas encore
+      const [columnInfo, columnError] = await this.executeQuery(
+        db,
+        `PRAGMA table_info(accounting_transactions);`,
+        []
+      );
+      
+      if (columnInfo) {
+        let totalColumnExists = false;
+        for (let i = 0; i < columnInfo.rows.length; i++) {
+          if (columnInfo.rows.item(i).name === 'total') {
+            totalColumnExists = true;
+            break;
+          }
+        }
+        
+        if (!totalColumnExists) {
+          logger.info('Ajout de la colonne "total" à la table accounting_transactions');
+          await this.executeQuery(
+            db,
+            `ALTER TABLE accounting_transactions ADD COLUMN total REAL DEFAULT 0;`,
+            []
+          );
+        }
+      }
+      
+      // 1. Récupérer toutes les transactions sans total ou avec total à 0
+      const [transactions, transactionsError] = await this.executeQuery(
+        db,
+        `SELECT id FROM accounting_transactions WHERE total IS NULL OR total = 0`,
+        []
+      );
+      
+      if (transactionsError || !transactions) {
+        throw transactionsError || new Error('Failed to fetch transactions');
+      }
+      
+      // 2. Pour chaque transaction, calculer le total basé sur la somme des débits
+      for (let i = 0; i < transactions.rows.length; i++) {
+        const transactionId = transactions.rows.item(i).id;
+        
+        // Récupérer toutes les écritures liées à cette transaction
+        const [entries, entriesError] = await this.executeQuery(
+          db,
+          `SELECT SUM(debit) as total_debit FROM accounting_entries 
+           WHERE transaction_id = ?`,
+          [transactionId]
+        );
+        
+        if (!entriesError && entries && entries.rows.length > 0) {
+          const totalAmount = entries.rows.item(0).total_debit || 0;
+          
+          // Mettre à jour la transaction avec ce total
+          await this.executeQuery(
+            db,
+            `UPDATE accounting_transactions SET total = ? WHERE id = ?`,
+            [totalAmount, transactionId]
+          );
+          
+          logger.info(`Updated transaction ${transactionId} with total ${totalAmount}`);
+        }
+      }
+      
+      logger.info(`Successfully updated all transactions with total amounts`);
+    } catch (error) {
+      logger.error('Error updating transactions with totals:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all bond issuances for a specific issuer
+   */
+  async getBondIssuancesByIssuer(issuerId: string): Promise<BondIssuance[]> {
+    try {
+      const db = await this.getDBConnection();
+      const [result, error] = await this.executeQuery(
+        db,
+        `SELECT * FROM bond_issuances WHERE issuer_id = ? ORDER BY issuance_date DESC`,
+        [issuerId]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to fetch bond issuances');
+      }
+      
+      const issuances: BondIssuance[] = [];
+      for (let i = 0; i < result.rows.length; i++) {
+        issuances.push(result.rows.item(i));
+      }
+      
+      return issuances;
+    } catch (error) {
+      logger.error('Error fetching bond issuances:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get upcoming bond payments for a specific issuer
+   */
+  async getUpcomingBondPayments(issuerId: string): Promise<BondPayment[]> {
+    try {
+      const db = await this.getDBConnection();
+      const [result, error] = await this.executeQuery(
+        db,
+        `SELECT p.* FROM bond_payments p
+         JOIN bond_issuances i ON p.issuance_id = i.id
+         WHERE i.issuer_id = ? AND p.status = 'scheduled'
+         ORDER BY p.payment_date ASC`,
+        [issuerId]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to fetch upcoming bond payments');
+      }
+      
+      const payments: BondPayment[] = [];
+      for (let i = 0; i < result.rows.length; i++) {
+        payments.push(result.rows.item(i));
+      }
+      
+      return payments;
+    } catch (error) {
+      logger.error('Error fetching upcoming bond payments:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get a specific bond payment by ID
+   */
+  async getBondPayment(paymentId: string): Promise<BondPayment> {
+    try {
+      const db = await this.getDBConnection();
+      const [result, error] = await this.executeQuery(
+        db,
+        `SELECT * FROM bond_payments WHERE id = ?`,
+        [paymentId]
+      );
+      
+      if (error || !result || result.rows.length === 0) {
+        throw error || new Error('Bond payment not found');
+      }
+      
+      return result.rows.item(0);
+    } catch (error) {
+      logger.error('Error fetching bond payment:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update a bond payment
+   */
+  async updateBondPayment(paymentId: string, updates: Partial<BondPayment>): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Build the update query
+      const updateFields = Object.keys(updates)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      
+      const updateValues = Object.values(updates);
+      
+      const [result, error] = await this.executeQuery(
+        db,
+        `UPDATE bond_payments SET ${updateFields} WHERE id = ?`,
+        [...updateValues, paymentId]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to update bond payment');
+      }
+      
+      if (result.rowsAffected === 0) {
+        throw new Error('Bond payment not found');
+      }
+    } catch (error) {
+      logger.error('Error updating bond payment:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Create a new bond issuance
+   */
+  async createBondIssuance(issuanceData: Partial<BondIssuance>): Promise<string> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Generate a unique ID for the issuance
+      const issuanceId = `BI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Build the insert query
+      const fields = Object.keys(issuanceData).join(', ');
+      const placeholders = Object.keys(issuanceData)
+        .map(() => '?')
+        .join(', ');
+      
+      const values = Object.values(issuanceData);
+      
+      const [result, error] = await this.executeQuery(
+        db,
+        `INSERT INTO bond_issuances (id, ${fields}) VALUES (?, ${placeholders})`,
+        [issuanceId, ...values]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to create bond issuance');
+      }
+      
+      return issuanceId;
+    } catch (error) {
+      logger.error('Error creating bond issuance:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get a specific bond issuance by ID
+   */
+  async getBondIssuance(issuanceId: string): Promise<BondIssuance> {
+    try {
+      const db = await this.getDBConnection();
+      const [result, error] = await this.executeQuery(
+        db,
+        `SELECT * FROM bond_issuances WHERE id = ?`,
+        [issuanceId]
+      );
+      
+      if (error || !result || result.rows.length === 0) {
+        throw error || new Error('Bond issuance not found');
+      }
+      
+      return result.rows.item(0);
+    } catch (error) {
+      logger.error('Error fetching bond issuance:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update a bond issuance
+   */
+  async updateBondIssuance(issuanceId: string, updates: Partial<BondIssuance>): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Build the update query
+      const updateFields = Object.keys(updates)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      
+      const updateValues = Object.values(updates);
+      
+      const [result, error] = await this.executeQuery(
+        db,
+        `UPDATE bond_issuances SET ${updateFields} WHERE id = ?`,
+        [...updateValues, issuanceId]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to update bond issuance');
+      }
+      
+      if (result.rowsAffected === 0) {
+        throw new Error('Bond issuance not found');
+      }
+    } catch (error) {
+      logger.error('Error updating bond issuance:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Create bond payment schedule entries
+   */
+  async createBondPaymentSchedule(payments: Array<{
+    issuance_id: string;
+    payment_date: string;
+    payment_amount: number;
+    payment_type: 'interest' | 'principal';
+    status: 'scheduled' | 'paid' | 'missed';
+  }>): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Begin transaction
+      await db.transaction(async tx => {
+        for (const payment of payments) {
+          // Generate a unique ID for each payment
+          const paymentId = `BP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          
+          tx.executeSql(
+            `INSERT INTO bond_payments (
+              id, 
+              issuance_id, 
+              payment_date, 
+              payment_amount, 
+              payment_type, 
+              status
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              paymentId,
+              payment.issuance_id,
+              payment.payment_date,
+              payment.payment_amount,
+              payment.payment_type,
+              payment.status
+            ]
+          );
+        }
+      });
+      
+      logger.info(`Created ${payments.length} bond payment schedule entries`);
+    } catch (error) {
+      logger.error('Error creating bond payment schedule:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new investment record
+   */
+  async createInvestment(investmentData: {
+    type: string;
+    amount: number;
+    term: number;
+    financialInstitution: string;
+    isPublic: boolean;
+    interestRate: number;
+    date: string;
+    status: string;
+    interestAccrued: number;
+    maturityDate: string;
+  }): Promise<string> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Generate a unique ID for the investment
+      const investmentId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Build the insert query
+      const fields = Object.keys(investmentData).join(', ');
+      const placeholders = Object.keys(investmentData)
+        .map(() => '?')
+        .join(', ');
+      
+      const values = Object.values(investmentData);
+      
+      const [result, error] = await this.executeQuery(
+        db,
+        `INSERT INTO investments (id, ${fields}) VALUES (?, ${placeholders})`,
+        [investmentId, ...values]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to create investment');
+      }
+      
+      return investmentId;
+    } catch (error) {
+      logger.error('Error creating investment:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get a specific investment by ID
+   */
+  async getInvestment(investmentId: string): Promise<any> {
+    try {
+      const db = await this.getDBConnection();
+      const [result, error] = await this.executeQuery(
+        db,
+        `SELECT * FROM investments WHERE id = ?`,
+        [investmentId]
+      );
+      
+      if (error || !result || result.rows.length === 0) {
+        throw error || new Error('Investment not found');
+      }
+      
+      return result.rows.item(0);
+    } catch (error) {
+      logger.error('Error fetching investment:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update an investment record
+   */
+  async updateInvestment(investmentId: string, updates: any): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Build the update query
+      const updateFields = Object.keys(updates)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      
+      const updateValues = Object.values(updates);
+      
+      const [result, error] = await this.executeQuery(
+        db,
+        `UPDATE investments SET ${updateFields} WHERE id = ?`,
+        [...updateValues, investmentId]
+      );
+      
+      if (error || !result) {
+        throw error || new Error('Failed to update investment');
+      }
+      
+      if (result.rowsAffected === 0) {
+        throw new Error('Investment not found');
+      }
+    } catch (error) {
+      logger.error('Error updating investment:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Create investment income schedule entries
+   */
+  async createInvestmentIncomeSchedule(incomeSchedule: Array<{
+    investment_id: string;
+    income_date: string;
+    income_amount: number;
+    income_type: 'interest' | 'principal';
+    status: 'scheduled' | 'received' | 'missed';
+  }>): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Begin transaction
+      await db.transaction(async tx => {
+        for (const income of incomeSchedule) {
+          // Generate a unique ID for each income entry
+          const incomeId = `II-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          
+          tx.executeSql(
+            `INSERT INTO investment_income (
+              id, 
+              investment_id, 
+              income_date, 
+              income_amount, 
+              income_type, 
+              status
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              incomeId,
+              income.investment_id,
+              income.income_date,
+              income.income_amount,
+              income.income_type,
+              income.status
+            ]
+          );
+        }
+      });
+      
+      logger.info(`Created ${incomeSchedule.length} investment income schedule entries`);
+    } catch (error) {
+      logger.error('Error creating investment income schedule:', error);
+      throw error;
+    }
   }
 }
 

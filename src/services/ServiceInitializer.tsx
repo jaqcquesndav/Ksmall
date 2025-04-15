@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import logger from '../utils/logger';
+import DatabaseService from './DatabaseService';
+import AccountingService from './AccountingService';
 
 interface ServiceInitializerProps {
   children: React.ReactNode;
@@ -14,8 +16,16 @@ const ServiceInitializer: React.FC<ServiceInitializerProps> = ({ children }) => 
       try {
         logger.info('Initializing services...');
         
-        // Add service initialization logic here
-        // For example:
+        // Initialisation de la base de données
+        await DatabaseService.initDatabase();
+        
+        // Initialisation des tables comptables
+        await DatabaseService.initAccountingTables();
+        
+        // Chargement des données de démonstration pour la comptabilité
+        await AccountingService.initializeDemoData();
+        
+        // Autres services à initialiser
         // await NotificationService.initialize();
         // await AnalyticsService.initialize();
         

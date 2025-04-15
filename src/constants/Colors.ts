@@ -27,3 +27,21 @@ export const darkThemeColors = {
   success: '#4CAF50',
   warning: '#FFA000',
 };
+
+// Export a combined Colors object that can be imported as { Colors }
+// Also export a default Colors object that matches the current theme (light for now)
+export const Colors = {
+  ...lightThemeColors, // Use light theme as default
+  light: lightThemeColors,
+  dark: darkThemeColors,
+  // Additional colors for specific use cases
+  successLight: '#C8E6C9',
+  successDark: '#2E7D32',
+  warningLight: '#FFECB3',
+  warningDark: '#F57F17',
+  errorLight: '#FFCDD2',
+  errorDark: '#B71C1C',
+};
+
+// Default export for direct import
+export default Colors;

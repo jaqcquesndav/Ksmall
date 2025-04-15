@@ -7,9 +7,9 @@ import { useTheme } from 'react-native-paper';
 
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ChatScreen from '../screens/main/ChatScreen';
-import AccountingScreen from '../screens/main/AccountingScreen';
 import InventoryScreen from '../screens/main/InventoryScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import AccountingNavigator from './AccountingNavigator';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
@@ -56,7 +56,7 @@ const TabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="Accounting"
-        component={AccountingScreen}
+        component={AccountingNavigator}
         options={{
           tabBarLabel: t('accounting'),
           tabBarIcon: ({ color, size }) => (

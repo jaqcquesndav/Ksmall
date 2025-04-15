@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,13 +23,36 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   initialStartDate,
   initialEndDate,
 }) => {
+  const today = new Date();
+  const defaultEndDate = new Date();
+  defaultEndDate.setDate(today.getDate() + 7);
+
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-  const [tempStartDate, setTempStartDate] = useState(initialStartDate || new Date());
-  const [tempEndDate, setTempEndDate] = useState(initialEndDate || new Date());
-  const [startDate, setStartDate] = useState(initialStartDate || new Date());
-  const [endDate, setEndDate] = useState(initialEndDate || new Date());
+  const [tempStartDate, setTempStartDate] = useState(initialStartDate || today);
+  const [tempEndDate, setTempEndDate] = useState(initialEndDate || defaultEndDate);
+  const [startDate, setStartDate] = useState(initialStartDate || today);
+  const [endDate, setEndDate] = useState(initialEndDate || defaultEndDate);
   const [isSelectingStart, setIsSelectingStart] = useState(true);
   const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (initialStartDate) {
+      setStartDate(initialStartDate);
+      setTempStartDate(initialStartDate);
+    }
+    if (initialEndDate) {
+      setEndDate(initialEndDate);
+      setTempEndDate(initialEndDate);
+    }
+  }, [initialStartDate, initialEndDate]);
+
+  useEffect(() => {
+    if (tempEndDate < tempStartDate) {
+      const newEndDate = new Date(tempStartDate);
+      newEndDate.setDate(tempStartDate.getDate() + 1);
+      setTempEndDate(newEndDate);
+    }
+  }, [tempStartDate, tempEndDate]);
 
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('fr-FR', {
@@ -44,11 +67,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     setTempEndDate(endDate);
     setIsSelectingStart(true);
     setIsPickerVisible(true);
-    if (Platform.OS === 'ios') {
-      setShow(true);
-    } else {
-      setShow(true);
-    }
+    setShow(true);
   };
 
   const handleCancel = () => {
@@ -68,7 +87,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     if (Platform.OS === 'android') {
       setShow(false);
     }
-    
+
     if (selectedDate) {
       if (isSelectingStart) {
         setTempStartDate(selectedDate);
@@ -77,7 +96,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
           setTimeout(() => setShow(true), 500);
         }
       } else {
-        setTempEndDate(selectedDate);
+        if (selectedDate < tempStartDate) {
+          const newEndDate = new Date(tempStartDate);
+          newEndDate.setDate(tempStartDate.getDate() + 1);
+          setTempEndDate(newEndDate);
+        } else {
+          setTempEndDate(selectedDate);
+        }
         if (Platform.OS === 'android') {
           handleConfirm();
         }

@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { firebase } from '../config/firebase';
+import DashboardAccountingService from '../services/DashboardAccountingService';
+import { setDemoMode } from '../services/auth/AuthStorage';
 
 interface User {
   uid: string;
@@ -92,6 +94,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         };
         await new Promise(resolve => setTimeout(resolve, 500));
         setUser(demoUser);
+        // Activer le mode démo pour les transactions
+        await setDemoMode(true);
+        DashboardAccountingService.setDemoMode(true);
         console.log("🎉 Demo account login complete");
         return;
       } else {
@@ -105,6 +110,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           photoURL: null,
           emailVerified: false
         });
+        // Désactiver le mode démo pour les transactions
+        await setDemoMode(false);
+        DashboardAccountingService.setDemoMode(false);
         console.log("✅ Regular login complete with email:", email);
       }
     } catch (error: any) {
@@ -192,6 +200,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
       await new Promise(resolve => setTimeout(resolve, 500));
       setUser(demoUser);
+      // Activer le mode démo pour les transactions
+      await setDemoMode(true);
+      DashboardAccountingService.setDemoMode(true);
       console.log("🎉 Demo account login complete");
     } catch (error: any) {
       console.error('Demo login failed:', error.message);

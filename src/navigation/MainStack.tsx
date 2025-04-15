@@ -18,6 +18,8 @@ import NotificationSettingsScreen from '../screens/settings/NotificationSettings
 import PermissionSettingsScreen from '../screens/settings/PermissionSettingsScreen';
 import HelpSupportScreen from '../screens/settings/HelpSupportScreen';
 import AboutScreen from '../screens/settings/AboutScreen';
+import SubscriptionScreen from '../screens/settings/SubscriptionScreen';
+import TokenPurchaseScreen from '../screens/settings/TokenPurchaseScreen';
 
 // Import accounting screens
 import JournalEntryDetailsScreen from '../screens/accounting/JournalEntryDetailsScreen';
@@ -29,6 +31,12 @@ import ProductDetailsScreen from '../screens/inventory/ProductDetailsScreen';
 import TransactionDetailsScreen from '../screens/inventory/TransactionDetailsScreen';
 import AddProductScreen from '../screens/inventory/AddProductScreen';
 import StockAdjustmentScreen from '../screens/inventory/StockAdjustmentScreen';
+
+// Import finance screens
+import FinanceRequestScreen from '../screens/finance/FinanceRequestScreen';
+import FinancePaymentScreen from '../screens/finance/FinancePaymentScreen';
+import FinanceInvestmentScreen from '../screens/finance/FinanceInvestmentScreen';
+import BondIssuanceScreen from '../screens/finance/BondIssuanceScreen';
 
 // Import chat screen
 import ConversationScreen from '../screens/chat/ConversationScreen';
@@ -57,6 +65,10 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
       <Stack.Screen name="About" component={AboutScreen} />
       
+      {/* Subscription and Token screens */}
+      <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
+      <Stack.Screen name="TokenPurchase" component={TokenPurchaseScreen} />
+      
       {/* Accounting screens */}
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
       <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />
@@ -67,6 +79,12 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} />
       <Stack.Screen name="StockAdjustment" component={StockAdjustmentScreen} />
+      
+      {/* Finance screens */}
+      <Stack.Screen name="FinanceRequest" component={FinanceRequestScreen} />
+      <Stack.Screen name="FinancePayment" component={FinancePaymentScreen} />
+      <Stack.Screen name="FinanceInvestment" component={FinanceInvestmentScreen} />
+      <Stack.Screen name="BondIssuance" component={BondIssuanceScreen} />
       
       {/* Chat screen */}
       <Stack.Screen name="Chat" component={ConversationScreen} />

@@ -8,11 +8,14 @@ import DatabaseService from '../../services/DatabaseService';
 import Chart from '../../components/common/Chart';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import * as CompanyService from '../../services/CompanyService';
+import DashboardAccountingService from '../../services/DashboardAccountingService';
+import { CurrencyInfo } from '../../services/CurrencyService';
 
 // Import des nouveaux composants et données
 import SubscriptionStatusWidget from '../../components/dashboard/SubscriptionStatusWidget';
 import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
-import { getRecentTransactions } from '../../data/transactionsMockData';
+import QuickFinanceActionsButton from '../../components/dashboard/QuickFinanceActionsButton';
 
 const DashboardScreen = () => {
   const { t } = useTranslation();
@@ -29,81 +32,78 @@ const DashboardScreen = () => {
   const [creditInfoVisible, setCreditInfoVisible] = useState(false);
   const [esgInfoVisible, setEsgInfoVisible] = useState(false);
   
-  // Données des scores et soldes (normalement chargées depuis la base de données)
-  const [creditScore, setCreditScore] = useState(78);
+  // Données des scores et soldes
+  const [creditScore, setCreditScore] = useState(0);
   const [esgRating, setEsgRating] = useState('B+');
   const [accountBalances, setAccountBalances] = useState({
-    cash: 2500000,
-    receivables: 1750000,
-    payables: 950000
+    cash: 0,
+    receivables: 0,
+    payables: 0
   });
+  const [financialMetrics, setFinancialMetrics] = useState({
+    totalRevenue: 0,
+    totalExpenses: 0,
+    netIncome: 0,
+    profitMargin: 0
+  });
+  
+  // Information sur la devise actuelle
+  const [currencyInfo, setCurrencyInfo] = useState<CurrencyInfo | null>(null);
   
   // Données des transactions récentes
   const [recentTransactions, setRecentTransactions] = useState([]);
   
   useEffect(() => {
-    // Charger les transactions récentes
-    setRecentTransactions(getRecentTransactions(5));
-    
-    // Charger les autres données depuis la base de données SQLite
-    const loadDashboardData = async () => {
-      try {
-        const db = await DatabaseService.getDBConnection();
-        
-        const [creditScoreResult] = await DatabaseService.executeQuery(
-          db,
-          'SELECT value FROM user_metrics WHERE metric_name = ?',
-          ['credit_score']
-        );
-        if (creditScoreResult && creditScoreResult.rows.length > 0) {
-          setCreditScore(creditScoreResult.rows.item(0).value);
-        }
-        
-        const [esgResult] = await DatabaseService.executeQuery(
-          db,
-          'SELECT value FROM user_metrics WHERE metric_name = ?',
-          ['esg_rating']
-        );
-        if (esgResult && esgResult.rows.length > 0) {
-          setEsgRating(esgResult.rows.item(0).value);
-        }
-        
-        const [balancesResult] = await DatabaseService.executeQuery(
-          db,
-          'SELECT account_type, SUM(balance) as total FROM accounts GROUP BY account_type',
-          []
-        );
-        if (balancesResult && balancesResult.rows.length > 0) {
-          const newBalances = { cash: 0, receivables: 0, payables: 0 };
-          for (let i = 0; i < balancesResult.rows.length; i++) {
-            const item = balancesResult.rows.item(i);
-            if (item.account_type === 'cash') newBalances.cash = item.total;
-            if (item.account_type === 'receivable') newBalances.receivables = item.total;
-            if (item.account_type === 'payable') newBalances.payables = item.total;
-          }
-          setAccountBalances(newBalances);
-        }
-        
-        const [subscriptionResult] = await DatabaseService.executeQuery(
-          db,
-          'SELECT * FROM subscription WHERE user_id = ? ORDER BY expiry_date DESC LIMIT 1',
-          [1]
-        );
-        if (subscriptionResult && subscriptionResult.rows.length > 0) {
-          const sub = subscriptionResult.rows.item(0);
-          setSubscriptionInfo({
-            plan: sub.plan_name,
-            expiryDate: new Date(sub.expiry_date),
-            features: JSON.parse(sub.features)
-          });
-        }
-      } catch (error) {
-        console.error("Erreur lors du chargement des données du tableau de bord:", error);
-      }
-    };
-    
+    // Charger les données du tableau de bord depuis le service centralisé
     loadDashboardData();
   }, []);
+  
+  // Fonction pour charger les données du tableau de bord
+  const loadDashboardData = async () => {
+    try {
+      // Obtenir les informations sur la devise actuelle
+      const currency = await DashboardAccountingService.getCurrentCurrencyInfo();
+      setCurrencyInfo(currency);
+      
+      // Obtenir la cote de crédit
+      const score = await DashboardAccountingService.calculateCreditScore();
+      setCreditScore(score);
+      
+      // Obtenir la notation ESG
+      const esgRatingValue = await DashboardAccountingService.getESGRating();
+      setEsgRating(esgRatingValue);
+      
+      // Obtenir les soldes des comptes
+      const balances = await DashboardAccountingService.getDashboardBalances();
+      setAccountBalances(balances);
+      
+      // Obtenir les métriques financières
+      const metrics = await DashboardAccountingService.getFinancialMetrics();
+      setFinancialMetrics(metrics);
+      
+      // Obtenir les transactions récentes
+      const transactions = await DashboardAccountingService.getRecentTransactions(5);
+      setRecentTransactions(transactions);
+      
+      // Charger les informations d'abonnement
+      const db = await DatabaseService.getDBConnection();
+      const [subscriptionResult] = await DatabaseService.executeQuery(
+        db,
+        'SELECT * FROM subscription WHERE user_id = ? ORDER BY expiry_date DESC LIMIT 1',
+        [1]
+      );
+      if (subscriptionResult && subscriptionResult.rows.length > 0) {
+        const sub = subscriptionResult.rows.item(0);
+        setSubscriptionInfo({
+          plan: sub.plan_name,
+          expiryDate: new Date(sub.expiry_date),
+          features: JSON.parse(sub.features)
+        });
+      }
+    } catch (error) {
+      console.error("Erreur lors du chargement des données du tableau de bord:", error);
+    }
+  };
 
   const getCreditScoreColor = (score) => {
     if (score >= 80) return '#4CAF50';
@@ -120,6 +120,20 @@ const DashboardScreen = () => {
     return '#F44336';
   };
 
+  // Fonction pour formater les montants selon la devise sélectionnée
+  const formatCurrency = (value) => {
+    if (currencyInfo) {
+      return currencyInfo.format(value);
+    }
+    
+    // Fallback au format par défaut si pas d'info sur la devise
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'XOF'
+    }).format(value);
+  };
+
+  // Le reste du composant DashboardScreen reste inchangé...
   return (
     <View style={styles.container}>
       <AppHeader title={t('dashboard')} />
@@ -131,11 +145,14 @@ const DashboardScreen = () => {
             <Card.Content>
               <View style={styles.cardHeader}>
                 <Title>{t('financial_summary')}</Title>
-                <IconButton 
-                  icon="refresh" 
-                  size={20} 
-                  onPress={() => console.log('Refresh stats')} 
-                />
+                <View style={styles.actionButtonsContainer}>
+                  <QuickFinanceActionsButton />
+                  <IconButton 
+                    icon="refresh" 
+                    size={20} 
+                    onPress={() => loadDashboardData()} 
+                  />
+                </View>
               </View>
               
               {/* Section Cote de Crédit et ESG - Togglable */}
@@ -216,28 +233,28 @@ const DashboardScreen = () => {
                       <View style={styles.balanceRow}>
                         <Text style={styles.balanceLabel}>{t('cash')}</Text>
                         <Text style={styles.balanceValue}>
-                          {new Intl.NumberFormat('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF'
-                          }).format(accountBalances.cash)}
+                          {formatCurrency(accountBalances.cash)}
                         </Text>
                       </View>
                       <View style={styles.balanceRow}>
                         <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
                         <Text style={styles.balanceValue}>
-                          {new Intl.NumberFormat('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF'
-                          }).format(accountBalances.receivables)}
+                          {formatCurrency(accountBalances.receivables)}
                         </Text>
                       </View>
                       <View style={styles.balanceRow}>
                         <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
                         <Text style={styles.balanceValue}>
-                          {new Intl.NumberFormat('fr-FR', {
-                            style: 'currency',
-                            currency: 'XOF'
-                          }).format(accountBalances.payables)}
+                          {formatCurrency(accountBalances.payables)}
+                        </Text>
+                      </View>
+                      <View style={[styles.balanceRow, styles.totalRow]}>
+                        <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
+                        <Text style={[
+                          styles.balanceValueTotal,
+                          {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
+                        ]}>
+                          {formatCurrency(financialMetrics.netIncome)}
                         </Text>
                       </View>
                     </View>
@@ -312,6 +329,7 @@ const DashboardScreen = () => {
               <Text style={styles.dialogSubtitle}>{t('what_is_credit_score')}</Text>
               <Text style={styles.dialogText}>
                 La cote de crédit est une évaluation de votre solvabilité sur une échelle de 0 à 100. 
+                Elle est calculée automatiquement à partir de vos données comptables.
                 Elle est utilisée par les institutions financières pour déterminer le risque associé à vous accorder un crédit.
               </Text>
               
@@ -605,6 +623,24 @@ const additionalStyles = StyleSheet.create({
   collapsedCard: {
     marginBottom: 4,
   },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  totalRow: {
+    backgroundColor: '#f9f9f9',
+    borderBottomWidth: 0,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  balanceLabelTotal: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  balanceValueTotal: {
+    fontSize: 15,
+    fontWeight: '700',
+  }
 });
 
 const styles = StyleSheet.create({
@@ -614,6 +650,12 @@ const styles = StyleSheet.create({
 
 export default DashboardScreen;
 
-function setSubscriptionInfo(arg0: { plan: any; expiryDate: Date; features: any; }) {
-    throw new Error('Function not implemented.');
+// Définir correctement la fonction setSubscriptionInfo au niveau du composant
+function setSubscriptionInfo(subscriptionData: { plan: string; expiryDate: Date; features: any[] }) {
+  // Vous pouvez implémenter cette fonction selon vos besoins
+  // Par exemple, mettre à jour un état local ou global, ou appeler une API
+  console.log('Subscription info updated:', subscriptionData);
+  
+  // Si vous avez un état global de gestion d'abonnement, vous pouvez l'utiliser ici
+  // Par exemple avec un hook personnalisé : useSubscription().updateSubscription(subscriptionData);
 }

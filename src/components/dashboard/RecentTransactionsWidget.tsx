@@ -1,130 +1,161 @@
-import React from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { Text, Avatar, useTheme, Button, Divider } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text, List, Avatar, Divider } from 'react-native-paper';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Transaction } from '../../data/transactionsMockData';
 import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { MainStackParamList } from '../../navigation/types';
-import { formatCurrency } from '../../utils/formatters';
+import CurrencyService from '../../services/CurrencyService';
+
+// Types pour les transactions
+interface Transaction {
+  id: string;
+  date: Date;
+  description: string;
+  amount: number;
+  status: string;
+  account?: string;
+  reference?: string;
+}
 
 interface RecentTransactionsWidgetProps {
   transactions: Transaction[];
 }
 
+// Type pour les noms d'icônes de MaterialCommunityIcons
+type MaterialCommunityIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+/**
+ * Composant pour afficher les transactions récentes sur le dashboard
+ */
 const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ transactions }) => {
-  const { t } = useTranslation();
-  const theme = useTheme();
-  const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
+  const navigation = useNavigation<any>();
+  const [currencyFormatter, setCurrencyFormatter] = useState<(amount: number) => string>(
+    (amount) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(amount)
+  );
+  
+  // Charger le formateur de devise au chargement du composant
+  useEffect(() => {
+    const loadCurrencyFormatter = async () => {
+      try {
+        const currencyInfo = await CurrencyService.getSelectedCurrencyInfo();
+        setCurrencyFormatter(() => currencyInfo.format);
+      } catch (error) {
+        console.error('Erreur lors du chargement des informations de devise:', error);
+      }
+    };
+    
+    loadCurrencyFormatter();
+  }, []);
 
-  const getTransactionIcon = (type: string) => {
-    switch (type) {
-      case 'income': return 'arrow-down';
-      case 'expense': return 'arrow-up';
-      case 'transfer': return 'swap-horizontal';
-      default: return 'currency-usd';
-    }
+  // Formater la date
+  const formatDate = (date: Date): string => {
+    return format(date, 'dd MMM yyyy', { locale: fr });
   };
 
-  const getTransactionColor = (type: string) => {
-    switch (type) {
-      case 'income': return theme.colors.primary; // Replace with a valid color from the theme
-      case 'expense': return theme.colors.error;
-      case 'transfer': return theme.colors.primary;
-      default: return theme.colors.primary;
+  // Obtenir l'icône en fonction du type de compte
+  const getAccountIcon = (accountCode?: string): MaterialCommunityIconName => {
+    if (!accountCode) return 'bank';
+    
+    if (accountCode.startsWith('5')) return 'bank'; // Comptes de trésorerie
+    if (accountCode.startsWith('4')) {
+      if (accountCode.startsWith('41')) return 'account-arrow-left'; // Clients
+      if (accountCode.startsWith('40')) return 'account-arrow-right'; // Fournisseurs
+      return 'account'; // Autres comptes de tiers
     }
+    if (accountCode.startsWith('7')) return 'cash-plus'; // Produits
+    if (accountCode.startsWith('6')) return 'cash-minus'; // Charges
+    
+    return 'cash';
   };
 
-  const handleTransactionPress = (transaction: Transaction) => {
-    navigation.navigate('TransactionDetails', { 
-      transactionId: transaction.id 
+  // Obtenir la couleur en fonction du type de compte
+  const getAccountColor = (accountCode?: string): string => {
+    if (!accountCode) return '#607D8B';
+    
+    if (accountCode.startsWith('5')) return '#2196F3'; // Comptes de trésorerie
+    if (accountCode.startsWith('41')) return '#4CAF50'; // Clients (actif)
+    if (accountCode.startsWith('40')) return '#F44336'; // Fournisseurs (passif)
+    if (accountCode.startsWith('7')) return '#4CAF50'; // Produits
+    if (accountCode.startsWith('6')) return '#F44336'; // Charges
+    
+    return '#607D8B';
+  };
+
+  // Gérer le clic sur une transaction
+  const handleTransactionPress = (transactionId: string) => {
+    console.log(`Navigation vers TransactionDetails avec ID: ${transactionId}`);
+    // Utiliser une navigation imbriquée pour accéder à TransactionDetails depuis l'onglet Accounting
+    navigation.navigate('MainTabs', {
+      screen: 'Accounting',
+      params: { 
+        screen: 'TransactionDetails',
+        params: { transactionId }
+      }
     });
   };
 
-  const viewAllTransactions = () => {
-    navigation.navigate('MainTabs', { screen: 'Accounting' });
-  };
-
-  const renderTransactionItem = ({ item }: { item: Transaction }) => (
-    <TouchableOpacity
-      style={styles.transactionItem}
-      onPress={() => handleTransactionPress(item)}
-    >
-      <Avatar.Icon
-        size={40}
-        icon={getTransactionIcon(item.type)}
-        style={{ backgroundColor: getTransactionColor(item.type) + '20' }} // Couleur avec opacité
-        color={getTransactionColor(item.type)}
-      />
-      <View style={styles.transactionDetails}>
-        <Text style={styles.transactionDescription} numberOfLines={1}>
-          {item.description}
-        </Text>
-        <Text style={styles.transactionReference}>
-          {item.reference} • {item.date}
-        </Text>
+  // Si pas de transactions, afficher un message
+  if (!transactions || transactions.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>Aucune transaction récente</Text>
       </View>
-      <View style={styles.transactionAmount}>
-        <Text
-          style={[
-            styles.amount,
-            { color: getTransactionColor(item.type) }
-          ]}
-        >
-          {item.type === 'expense' ? '-' : '+'} {formatCurrency(item.amount)}
-        </Text>
-        <View style={styles.statusContainer}>
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor:
-                  item.status === 'completed'
-                    ? theme.colors.primary // Replace with a valid color from the theme
-                    : item.status === 'pending'
-                    ? theme.colors.secondary // Replace with a valid color from the theme
-                    : theme.colors.error
-              }
-            ]}
-          />
-          <Text style={styles.statusText}>
-            {t(item.status)}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={transactions}
-        renderItem={renderTransactionItem}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        ItemSeparatorComponent={() => <Divider style={styles.divider} />}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons 
-              name="refresh" 
-              size={40} 
-              color={theme.colors.primary} 
-            />
-            <Text style={styles.emptyText}>
-              {t('no_recent_transactions')}
-            </Text>
-          </View>
-        )}
-      />
-      <Button 
-        mode="text"
-        onPress={viewAllTransactions}
-        style={styles.viewAllButton}
-        labelStyle={{ color: theme.colors.primary }}
-      >
-        {t('view_all')}
-      </Button>
+      {transactions.map((transaction, index) => (
+        <React.Fragment key={transaction.id}>
+          <List.Item
+            title={transaction.description}
+            description={`${formatDate(transaction.date)} • ${transaction.reference || 'Sans référence'}`}
+            left={props => (
+              <Avatar.Icon 
+                {...props} 
+                icon={() => (
+                  <MaterialCommunityIcons 
+                    name={getAccountIcon(transaction.account)} 
+                    size={24} 
+                    color="white"
+                  />
+                )}
+                style={{backgroundColor: getAccountColor(transaction.account)}}
+              />
+            )}
+            right={props => (
+              <View style={styles.amountContainer}>
+                <Text style={[
+                  styles.amount,
+                  transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount
+                ]}>
+                  {currencyFormatter(transaction.amount)}
+                </Text>
+                <Text style={styles.status}>
+                  {transaction.status === 'posted' ? 'Validé' : 
+                   transaction.status === 'pending' ? 'En attente' : 'Annulé'}
+                </Text>
+              </View>
+            )}
+            onPress={() => handleTransactionPress(transaction.id)}
+            style={styles.listItem}
+          />
+          {index < transactions.length - 1 && <Divider style={styles.divider} />}
+        </React.Fragment>
+      ))}
+      
+      <View style={styles.viewAllContainer}>
+        <Text 
+          style={styles.viewAll}
+          onPress={() => navigation.navigate('MainTabs', { 
+            screen: 'Accounting',
+            params: { screen: 'JournalEntry' }
+          })}
+        >
+          Voir toutes les transactions
+        </Text>
+      </View>
     </View>
   );
 };
@@ -133,64 +164,46 @@ const styles = StyleSheet.create({
   container: {
     marginTop: 8,
   },
-  transactionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
+  listItem: {
+    paddingLeft: 0,
   },
-  transactionDetails: {
-    flex: 1,
-    marginHorizontal: 12,
+  divider: {
+    marginVertical: 4,
   },
-  transactionDescription: {
-    fontWeight: '500',
-    fontSize: 14,
-    marginBottom: 2,
-  },
-  transactionReference: {
-    fontSize: 12,
-    color: '#666',
-  },
-  transactionAmount: {
+  amountContainer: {
     alignItems: 'flex-end',
   },
   amount: {
-    fontWeight: 'bold',
     fontSize: 14,
+    fontWeight: 'bold',
   },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  positiveAmount: {
+    color: '#4CAF50',
+  },
+  negativeAmount: {
+    color: '#F44336',
+  },
+  status: {
+    fontSize: 12,
+    color: '#757575',
     marginTop: 2,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    color: '#666',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-  },
-  viewAllButton: {
-    alignSelf: 'center',
-    marginTop: 8,
-  },
   emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
     padding: 20,
+    alignItems: 'center',
   },
   emptyText: {
-    marginTop: 8,
-    color: '#666',
-    textAlign: 'center',
+    color: '#757575',
+    fontStyle: 'italic',
   },
+  viewAllContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  viewAll: {
+    color: '#2196F3',
+    fontSize: 14,
+  }
 });
 
 export default RecentTransactionsWidget;

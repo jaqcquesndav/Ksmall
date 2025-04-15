@@ -37,6 +37,28 @@ const SettingsScreen: React.FC = () => {
           />
         </Surface>
         
+        <List.Section title={t('subscription_and_billing')}>
+          <Surface style={styles.surface}>
+            <List.Item
+              title={t('manage_subscription')}
+              left={props => <List.Icon {...props} icon="account-cash" />}
+              onPress={() => navigation.navigate('SubscriptionScreen' as never)}
+            />
+            <Divider />
+            <List.Item
+              title={t('buy_tokens')}
+              left={props => <List.Icon {...props} icon="calculator-variant" />}
+              onPress={() => navigation.navigate('TokenPurchaseScreen' as never)}
+            />
+            <Divider />
+            <List.Item
+              title={t('billing_history')}
+              left={props => <List.Icon {...props} icon="receipt" />}
+              onPress={() => navigation.navigate('BillingHistory' as never)}
+            />
+          </Surface>
+        </List.Section>
+        
         <List.Section title={t('account')}>
           <Surface style={styles.surface}>
             <List.Item

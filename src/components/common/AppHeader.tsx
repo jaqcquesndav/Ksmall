@@ -12,6 +12,7 @@ interface AppHeaderProps {
   showNotifications?: boolean;
   showProfile?: boolean;
   rightAction?: ReactNode;
+  actions?: Array<{ icon: string; onPress: () => void }>;
 }
 
 const AppHeader: React.FC<AppHeaderProps> = ({ 
@@ -21,7 +22,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   showBack = false,
   showNotifications = true,
   showProfile = true,
-  rightAction
+  rightAction,
+  actions = []
 }) => {
   const navigation = useMainNavigation();
   const theme = useTheme();
@@ -133,6 +135,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       />
       
       {rightAction}
+      
+      {actions.map((action, index) => (
+        <Appbar.Action 
+          key={index} 
+          icon={action.icon} 
+          onPress={action.onPress} 
+        />
+      ))}
       
       {showNotifications && (
         <View>
