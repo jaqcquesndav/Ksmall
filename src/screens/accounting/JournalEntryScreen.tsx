@@ -8,7 +8,7 @@ import { Card, Portal, Dialog, Button as PaperButton, Paragraph } from 'react-na
 
 import AppHeader from '../../components/common/AppHeader';
 import AccountingService, { Transaction } from '../../services/AccountingService';
-import { formatDate, formatCurrency } from '../../utils/formatters';
+import { formatDate } from '../../utils/formatters';
 import { Colors } from '../../constants/Colors';
 import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
@@ -16,6 +16,7 @@ import Divider from '../../components/common/Divider';
 import Chip from '../../components/common/Chip';
 import SearchBar from '../../components/common/SearchBar';
 import { useTranslation } from 'react-i18next';
+import { useCurrency } from '../../hooks/useCurrency';
 
 // Interface pour les filtres exportables
 interface JournalFilter {
@@ -30,6 +31,7 @@ interface JournalFilter {
 const JournalEntryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { t } = useTranslation();
+  const { formatAmount } = useCurrency();
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -287,10 +289,10 @@ const JournalEntryScreen: React.FC = () => {
                   {entry.accountName}
                 </Text>
                 <Text style={[styles.entryText, styles.amountCol, styles.amountColRight]}>
-                  {entry.debit > 0 ? formatCurrency(entry.debit) : ''}
+                  {entry.debit > 0 ? formatAmount(entry.debit) : ''}
                 </Text>
                 <Text style={[styles.entryText, styles.amountCol, styles.amountColRight]}>
-                  {entry.credit > 0 ? formatCurrency(entry.credit) : ''}
+                  {entry.credit > 0 ? formatAmount(entry.credit) : ''}
                 </Text>
               </View>
             )}
@@ -311,10 +313,10 @@ const JournalEntryScreen: React.FC = () => {
           <Text style={[styles.totalText, styles.accountNumberCol]}></Text>
           <Text style={[styles.totalText, styles.accountNameCol]}>TOTAL</Text>
           <Text style={[styles.totalText, styles.amountCol, styles.amountColRight]}>
-            {formatCurrency(totalDebit)}
+            {formatAmount(totalDebit)}
           </Text>
           <Text style={[styles.totalText, styles.amountCol, styles.amountColRight]}>
-            {formatCurrency(totalCredit)}
+            {formatAmount(totalCredit)}
           </Text>
         </View>
         

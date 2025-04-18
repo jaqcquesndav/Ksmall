@@ -5,13 +5,19 @@
 /**
  * Génère le template HTML pour le bilan comptable
  */
-export const getBilanTemplate = (data: any, companyName: string, startDate: Date, endDate: Date): string => {
+export const getBilanTemplate = (
+  data: any, 
+  companyName: string, 
+  startDate: Date, 
+  endDate: Date,
+  formatCurrency?: (amount: number) => string
+): string => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('fr-FR');
   };
   
   const formatNumber = (num: number) => {
-    return num.toLocaleString('fr-FR');
+    return formatCurrency ? formatCurrency(num) : num.toLocaleString('fr-FR');
   };
   
   return `
@@ -158,13 +164,19 @@ export const getBilanTemplate = (data: any, companyName: string, startDate: Date
 /**
  * Génère le template HTML pour le compte de résultat
  */
-export const getCompteResultatTemplate = (data: any, companyName: string, startDate: Date, endDate: Date): string => {
+export const getCompteResultatTemplate = (
+  data: any, 
+  companyName: string, 
+  startDate: Date, 
+  endDate: Date,
+  formatCurrency?: (amount: number) => string
+): string => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('fr-FR');
   };
   
   const formatNumber = (num: number) => {
-    return num.toLocaleString('fr-FR');
+    return formatCurrency ? formatCurrency(num) : num.toLocaleString('fr-FR');
   };
   
   return `
@@ -368,13 +380,19 @@ export const getCompteResultatTemplate = (data: any, companyName: string, startD
 /**
  * Génère le template HTML pour la balance des comptes
  */
-export const getBalanceTemplate = (data: any, companyName: string, startDate: Date, endDate: Date): string => {
+export const getBalanceTemplate = (
+  data: any, 
+  companyName: string, 
+  startDate: Date, 
+  endDate: Date,
+  formatCurrency?: (amount: number) => string
+): string => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('fr-FR');
   };
   
   const formatNumber = (num: number) => {
-    return num.toLocaleString('fr-FR');
+    return formatCurrency ? formatCurrency(num) : num.toLocaleString('fr-FR');
   };
   
   return `
@@ -444,13 +462,19 @@ export const getBalanceTemplate = (data: any, companyName: string, startDate: Da
 /**
  * Génère le template HTML pour le tableau des flux de trésorerie
  */
-export const getTresorerieTemplate = (data: any, companyName: string, startDate: Date, endDate: Date): string => {
+export const getTresorerieTemplate = (
+  data: any, 
+  companyName: string, 
+  startDate: Date, 
+  endDate: Date,
+  formatCurrency?: (amount: number) => string
+): string => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('fr-FR');
   };
   
   const formatNumber = (num: number) => {
-    return num.toLocaleString('fr-FR');
+    return formatCurrency ? formatCurrency(num) : num.toLocaleString('fr-FR');
   };
   
   return `

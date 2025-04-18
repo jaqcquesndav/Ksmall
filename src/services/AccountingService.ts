@@ -373,7 +373,8 @@ class AccountingService {
     reportType: 'bilan' | 'compte_resultat' | 'balance' | 'tresorerie',
     startDate: Date,
     endDate: Date,
-    companyName: string = 'Entreprise Demo'
+    companyName: string = 'Entreprise Demo',
+    formatCurrency?: (value: number) => string
   ): Promise<string> {
     try {
       // Préparer les données selon le type de rapport
@@ -388,22 +389,22 @@ class AccountingService {
         case 'bilan':
           data = prepareBilanData(accounts);
           title = 'Bilan Comptable SYSCOHADA';
-          template = getBilanTemplate(data, companyName, startDate, endDate);
+          template = getBilanTemplate(data, companyName, startDate, endDate, formatCurrency);
           break;
         case 'compte_resultat':
           data = prepareCompteResultatData(accounts);
           title = 'Compte de Résultat SYSCOHADA';
-          template = getCompteResultatTemplate(data, companyName, startDate, endDate);
+          template = getCompteResultatTemplate(data, companyName, startDate, endDate, formatCurrency);
           break;
         case 'balance':
           data = prepareBalanceData(accounts, transactions);
           title = 'Balance des Comptes SYSCOHADA';
-          template = getBalanceTemplate(data, companyName, startDate, endDate);
+          template = getBalanceTemplate(data, companyName, startDate, endDate, formatCurrency);
           break;
         case 'tresorerie':
           data = prepareTresorerieData(accounts, transactions);
           title = 'Tableau des Flux de Trésorerie SYSCOHADA';
-          template = getTresorerieTemplate(data, companyName, startDate, endDate);
+          template = getTresorerieTemplate(data, companyName, startDate, endDate, formatCurrency);
           break;
         default:
           throw new Error(`Type de rapport non pris en charge: ${reportType}`);

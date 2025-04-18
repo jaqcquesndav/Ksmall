@@ -10,6 +10,8 @@ import AppHeader from '../../components/common/AppHeader';
 import AccountingService from '../../services/AccountingService';
 import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useCurrency } from '../../hooks/useCurrency';
 
 interface Report {
   id: string;
@@ -24,6 +26,7 @@ interface Report {
 const FinancialStatementsScreen: React.FC = () => {
   const navigation = useNavigation();
   const theme = useTheme();
+  const { formatAmount } = useCurrency();
   
   const [selectedReportType, setSelectedReportType] = useState<'bilan' | 'compte_resultat' | 'balance' | 'tresorerie'>('bilan');
   const [startDate, setStartDate] = useState<Date>(startOfMonth(subMonths(new Date(), 1)));
@@ -103,7 +106,8 @@ const FinancialStatementsScreen: React.FC = () => {
         selectedReportType,
         startDate,
         endDate,
-        'Entreprise Demo'
+        'Entreprise Demo',
+        formatAmount // Pass the formatAmount function from CurrencyContext
       );
       
       // Afficher un message de succès et rafraîchir la liste
