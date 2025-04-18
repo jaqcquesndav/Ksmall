@@ -34,12 +34,8 @@ const AccountingNavigator = () => {
         headerShown: false
       }}
     >
-      <Stack.Screen 
-        name="AccountingMain" 
-        component={AccountingScreen}
-        options={{ animationEnabled: true }}
-      />
-      <Stack.Screen name="AccountingMain" component={AccountingScreen} />
+      <Stack.Screen name="AccountingDashboard" component={AccountingDashboardScreen} />
+      {/* Écrans de comptabilité */}
       <Stack.Screen name="JournalEntry" component={JournalEntryScreen} />
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
       <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />
