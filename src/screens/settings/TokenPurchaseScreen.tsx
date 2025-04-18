@@ -1,18 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, Button, Card, RadioButton, Portal, Modal, TextInput, useTheme } from 'react-native-paper';
+import { Text, Button, Card, RadioButton, Portal, Modal, useTheme } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../components/common/AppHeader';
-import * as DocumentPicker from 'expo-document-picker';
 import { formatNumber } from '../../utils/formatters';
 import TokenService from '../../services/TokenService';
 import { useCurrency } from '../../hooks/useCurrency';
+import { CurrencyProvider } from '../../context/CurrencyContext';
 import ManualPaymentModal, { ManualPaymentDetails } from '../../components/payment/ManualPaymentModal';
 import CurrencyAmount from '../../components/common/CurrencyAmount';
 
-const TokenPurchaseScreen = () => {
+// Composant principal enveloppé dans un CurrencyProvider pour garantir l'accès au contexte
+const TokenPurchaseScreen = () => (
+  <CurrencyProvider>
+    <TokenPurchaseContent />
+  </CurrencyProvider>
+);
+
+// Contenu principal de l'écran
+const TokenPurchaseContent = () => {
   const navigation = useNavigation<any>();
   const { t } = useTranslation();
   const theme = useTheme();
@@ -60,18 +68,24 @@ const TokenPurchaseScreen = () => {
     }
   };
 
+  // Gestion du paiement manuel complété - cette fonction est appelée par le ManualPaymentModal
   const handleManualPaymentComplete = async (paymentDetails: ManualPaymentDetails) => {
     try {
-      // Dans une implémentation réelle, vous appelleriez votre service de paiement
       const plan = getSelectedPlan();
       
-      // Exemple d'utilisation du service de tokens pour vérifier l'achat
-      const success = await TokenService.verifyTokenPurchase(
-        plan.id,
-        plan.tokens,
-        paymentDetails.smsVerificationCode,
-        paymentDetails.proofDocument
-      );
+      // Simulation de vérification du paiement - dans un cas réel, vous appelleriez votre API
+      let success = false;
+      
+      if (paymentDetails.smsVerificationCode === '123456') {
+        // Le code de vérification est correct
+        console.log("Preuve de paiement:", paymentDetails.proofDocument);
+        console.log("Code de vérification:", paymentDetails.smsVerificationCode);
+        console.log("Référence:", paymentDetails.reference);
+        
+        success = true;
+        // Ici, vous pourriez appeler votre API pour valider le paiement et ajouter les tokens
+        // await TokenService.addTokens(plan.tokens);
+      }
       
       if (success) {
         Alert.alert(
@@ -88,7 +102,7 @@ const TokenPurchaseScreen = () => {
           ]
         );
       } else {
-        Alert.alert('Erreur de validation', 'Impossible de valider votre paiement. Veuillez réessayer.');
+        Alert.alert('Erreur de validation', 'Le code de vérification est incorrect. Veuillez réessayer.');
       }
     } catch (error) {
       console.error('Erreur lors du traitement du paiement manuel:', error);
@@ -96,13 +110,11 @@ const TokenPurchaseScreen = () => {
     }
   };
 
+  // Traitement des autres méthodes de paiement
   const handleProcessPayment = () => {
-    if (paymentMethod === 'manualPayment') {
-      // Cette partie est maintenant gérée par le modal de paiement manuel
-      return;
-    }
-
-    // Simuler un paiement pour les autres méthodes
+    const plan = getSelectedPlan();
+    
+    // Simulation de redirection vers un processeur de paiement
     Alert.alert(
       'Paiement en cours',
       'Redirection vers la passerelle de paiement...',
@@ -110,7 +122,6 @@ const TokenPurchaseScreen = () => {
         { 
           text: 'Simuler un paiement réussi', 
           onPress: () => {
-            const plan = getSelectedPlan();
             Alert.alert(
               'Paiement réussi', 
               `${formatNumber(plan.tokens)} tokens ont été ajoutés à votre compte.`,
@@ -157,10 +168,7 @@ const TokenPurchaseScreen = () => {
               <Card.Content>
                 <Text style={styles.planLabel}>{plan.label}</Text>
                 <Text style={styles.planTokens}>{formatNumber(plan.tokens)} tokens</Text>
-                <CurrencyAmount 
-                  amount={plan.price} 
-                  style={styles.planPrice}
-                />
+                <CurrencyAmount amount={plan.price} style={styles.planPrice} />
               </Card.Content>
             </Card>
           ))}
@@ -188,6 +196,12 @@ const TokenPurchaseScreen = () => {
                 <MaterialCommunityIcons name="file-document-outline" size={24} color="#555" style={styles.paymentIcon} />
                 <Text>{t('manualPayment')}</Text>
               </View>
+              
+              <View style={styles.paymentOption}>
+                <RadioButton value="mobilePayment" />
+                <MaterialCommunityIcons name="cellphone" size={24} color="#555" style={styles.paymentIcon} />
+                <Text>{t('mobilePayment')}</Text>
+              </View>
             </RadioButton.Group>
           </Card.Content>
         </Card>
@@ -213,7 +227,7 @@ const TokenPurchaseScreen = () => {
           
           <Text style={styles.modalText}>
             Vous êtes sur le point d'acheter {formatNumber(getSelectedPlan().tokens)} tokens pour{' '}
-            <CurrencyAmount amount={getSelectedPlan().price} />
+            {formatAmount(getSelectedPlan().price)}
           </Text>
           
           <Text style={styles.paymentMethodTitle}>Méthode de paiement sélectionnée:</Text>
@@ -235,6 +249,12 @@ const TokenPurchaseScreen = () => {
               <MaterialCommunityIcons name="file-document-outline" size={24} color="#555" style={styles.paymentIcon} />
               <Text>{t('manualPayment')}</Text>
             </View>
+            
+            <View style={styles.paymentOption}>
+              <RadioButton value="mobilePayment" />
+              <MaterialCommunityIcons name="cellphone" size={24} color="#555" style={styles.paymentIcon} />
+              <Text>{t('mobilePayment')}</Text>
+            </View>
           </RadioButton.Group>
           
           <Button
@@ -255,14 +275,14 @@ const TokenPurchaseScreen = () => {
         </Modal>
       </Portal>
 
-      {/* Modal de paiement manuel utilisant le composant réutilisable */}
+      {/* Utilisation du composant ManualPaymentModal pour le paiement manuel */}
       <ManualPaymentModal
         visible={manualPaymentModalVisible}
         onDismiss={() => setManualPaymentModalVisible(false)}
         onPaymentComplete={handleManualPaymentComplete}
         title="Achat de Tokens - Paiement Manuel"
-        amount={getSelectedPlan()?.price || 0}
-        description={`Achat de ${formatNumber(getSelectedPlan()?.tokens || 0)} tokens`}
+        amount={getSelectedPlan().price || 0}
+        description={`Achat de ${formatNumber(getSelectedPlan().tokens || 0)} tokens`}
       />
     </View>
   );
