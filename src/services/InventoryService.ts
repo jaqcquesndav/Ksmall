@@ -50,6 +50,7 @@ export interface Supplier {
   address?: string;
   paymentTerms?: string;
   notes?: string;
+  productCategories?: string[];
 }
 
 class InventoryService {
@@ -506,6 +507,24 @@ class InventoryService {
     // À implémenter quand la table des fournisseurs sera créée
     // Pour le moment, retourner les données mock
     return inventoryMockData.suppliers || [];
+  }
+  
+  /**
+   * Ajoute un nouveau fournisseur
+   */
+  async addSupplier(supplier: Supplier): Promise<Supplier> {
+    try {
+      // À implémenter quand la table des fournisseurs sera créée
+      // Pour le moment, simuler une création réussie
+      logger.info('Ajout d\'un fournisseur (simulation):', supplier);
+      
+      // Dans une implémentation réelle, on ajouterait le fournisseur à la base de données
+      // Pour cette simulation, on retourne simplement le fournisseur tel quel
+      return supplier;
+    } catch (error) {
+      logger.error('Erreur lors de l\'ajout du fournisseur:', error);
+      throw error;
+    }
   }
   
   /**

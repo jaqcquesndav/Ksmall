@@ -421,14 +421,14 @@ export const inventoryMockData = {
   
   // Suppliers
   suppliers: [
-    { id: 's1', name: 'HP Congo', contactPerson: 'Jean Lukusa', email: 'jean.lukusa@hpcongo.com', phone: '+243 123 4567', address: 'Kinshasa, DRC' },
-    { id: 's2', name: 'Samsung Electronics', contactPerson: 'Sophie Mbala', email: 'sophie@samsung-africa.com', phone: '+243 234 5678', address: 'Kinshasa, DRC' },
-    { id: 's3', name: 'LG Electronics', contactPerson: 'Pierre Masamba', email: 'pierre@lg-africa.com', phone: '+243 345 6789', address: 'Kinshasa, DRC' },
-    { id: 's4', name: 'Epson Africa', contactPerson: 'Clarisse Diamba', email: 'clarisse@epson-africa.com', phone: '+243 456 7890', address: 'Kinshasa, DRC' },
-    { id: 's5', name: 'Logitech', contactPerson: 'Emmanuel Lobe', email: 'emmanuel@logitech.com', phone: '+243 567 8901', address: 'Kinshasa, DRC' },
-    { id: 's6', name: 'Western Digital', contactPerson: 'Pauline Kande', email: 'pauline@wd.com', phone: '+243 678 9012', address: 'Kinshasa, DRC' },
-    { id: 's7', name: 'Nestlé', contactPerson: 'Robert Mwamba', email: 'robert@nestle.com', phone: '+243 789 0123', address: 'Kinshasa, DRC' },
-    { id: 's8', name: 'Nike Africa', contactPerson: 'Alice Samba', email: 'alice@nike-africa.com', phone: '+243 890 1234', address: 'Kinshasa, DRC' },
-    { id: 's9', name: 'Pearson Education', contactPerson: 'David Kongo', email: 'david@pearson.com', phone: '+243 901 2345', address: 'Kinshasa, DRC' }
+    { id: 's1', name: 'HP Congo', contactPerson: 'Jean Lukusa', email: 'jean.lukusa@hpcongo.com', phone: '+243 123 4567', address: 'Kinshasa, DRC', paymentTerms: 'Net 30', productCategories: ['Computers', 'Printers'] },
+    { id: 's2', name: 'Samsung Electronics', contactPerson: 'Sophie Mbala', email: 'sophie@samsung-africa.com', phone: '+243 234 5678', address: 'Kinshasa, DRC', paymentTerms: 'Net 45', productCategories: ['Phones', 'Televisions', 'Accessories'] },
+    { id: 's3', name: 'LG Electronics', contactPerson: 'Pierre Masamba', email: 'pierre@lg-africa.com', phone: '+243 345 6789', address: 'Kinshasa, DRC', paymentTerms: 'Net 30', productCategories: ['Televisions', 'Accessories'] },
+    { id: 's4', name: 'Epson Africa', contactPerson: 'Clarisse Diamba', email: 'clarisse@epson-africa.com', phone: '+243 456 7890', address: 'Kinshasa, DRC', paymentTerms: 'Net 30', productCategories: ['Printers'] },
+    { id: 's5', name: 'Logitech', contactPerson: 'Emmanuel Lobe', email: 'emmanuel@logitech.com', phone: '+243 567 8901', address: 'Kinshasa, DRC', paymentTerms: 'Net 60', productCategories: ['Accessories'] },
+    { id: 's6', name: 'Western Digital', contactPerson: 'Pauline Kande', email: 'pauline@wd.com', phone: '+243 678 9012', address: 'Kinshasa, DRC', paymentTerms: 'Net 45', productCategories: ['Storage'] },
+    { id: 's7', name: 'Nestlé', contactPerson: 'Robert Mwamba', email: 'robert@nestle.com', phone: '+243 789 0123', address: 'Kinshasa, DRC', paymentTerms: 'Net 30', productCategories: ['Beverages', 'Food'] },
+    { id: 's8', name: 'Nike Africa', contactPerson: 'Alice Samba', email: 'alice@nike-africa.com', phone: '+243 890 1234', address: 'Kinshasa, DRC', paymentTerms: 'Net 45', productCategories: ['Shoes', 'Clothing'] },
+    { id: 's9', name: 'Pearson Education', contactPerson: 'David Kongo', email: 'david@pearson.com', phone: '+243 901 2345', address: 'Kinshasa, DRC', paymentTerms: 'Net 60', productCategories: ['Business', 'Education'] }
   ]
 };

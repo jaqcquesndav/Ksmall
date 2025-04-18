@@ -34,6 +34,8 @@ import ProductDetailsScreen from '../screens/inventory/ProductDetailsScreen';
 import TransactionDetailsScreen from '../screens/inventory/TransactionDetailsScreen';
 import AddProductScreen from '../screens/inventory/AddProductScreen';
 import StockAdjustmentScreen from '../screens/inventory/StockAdjustmentScreen';
+import SupplierDetailsScreen from '../screens/inventory/SupplierDetailsScreen';
+import AddSupplierScreen from '../screens/inventory/AddSupplierScreen';
 
 // Import finance screens
 import FinanceRequestScreen from '../screens/finance/FinanceRequestScreen';
@@ -87,6 +89,8 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="TransactionDetails" component={TransactionDetailsScreen} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} />
       <Stack.Screen name="StockAdjustment" component={StockAdjustmentScreen} />
+      <Stack.Screen name="SupplierDetails" component={SupplierDetailsScreen} />
+      <Stack.Screen name="AddSupplier" component={AddSupplierScreen} />
       
       {/* Finance screens */}
       <Stack.Screen name="FinanceRequest" component={FinanceRequestScreen} />

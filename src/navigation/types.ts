@@ -75,35 +75,26 @@ export type MainStackParamList = {
   PermissionSettings: undefined;
   HelpSupport: undefined;
   About: undefined;
+  MapSelector: { onSelect: (location: any) => void };
   
-  // New screens for subscription and tokens
+  // Subscription and billing
   Subscriptions: undefined;
   TokenPurchase: undefined;
-  
-  // Accounting Navigator
-  AccountingNavigator: undefined | { screen: string; params?: object };
+  BillingHistory: undefined;
   
   // Accounting screens
-  JournalEntryDetails: { entryId: string };
-  AddJournalEntry: { draftId?: string };
-  AccountDetails: { accountId: string };
-  AccountingDashboard: undefined;
-  Ledger: undefined;
-  FinancialStatements: undefined;
-  ReportGenerator: { reportType?: string; period?: { start: string; end: string } };
+  AccountingNavigator: undefined;
+  JournalEntryDetails: { id: string };
+  AddJournalEntry: undefined;
+  AccountDetails: { id: string };
   
   // Inventory screens
   ProductDetails: { productId: string };
   TransactionDetails: { transactionId: string };
-  AddProduct: { productId?: string; categoryId?: string };
+  AddProduct: undefined;
   StockAdjustment: { productId: string };
-  
-  // Map selector for business locations
-  MapSelector: { 
-    initialLocation?: { latitude: number; longitude: number } | null;
-    onLocationSelected: (location: { latitude: number; longitude: number }) => void;
-    title?: string;
-  };
+  SupplierDetails: { supplierId: string };
+  AddSupplier: undefined;
   
   // Finance screens
   FinanceRequest: { 

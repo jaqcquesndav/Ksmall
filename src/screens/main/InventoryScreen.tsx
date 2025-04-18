@@ -9,10 +9,13 @@ import InventoryService from '../../services/InventoryService';
 import { InventoryItem, InventoryTransaction, Supplier } from '../../services/InventoryService';
 import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const InventoryScreen = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
+  const { formatAmount } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
@@ -102,9 +105,7 @@ const InventoryScreen = () => {
             </View>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>{t('price')}</Text>
-              <Text style={styles.detailValue}>
-                {new Intl.NumberFormat('fr-CI', { style: 'currency', currency: 'XOF' }).format(item.price)}
-              </Text>
+              <Text style={styles.detailValue}>{formatAmount(item.price)}</Text>
             </View>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>{t('category')}</Text>
@@ -139,9 +140,7 @@ const InventoryScreen = () => {
           <View style={styles.transactionDetails}>
             <Text>{t('items_count', { count: item.items.length })}</Text>
             {item.totalAmount > 0 && (
-              <Text style={styles.transactionAmount}>
-                {new Intl.NumberFormat('fr-CI', { style: 'currency', currency: 'XOF' }).format(item.totalAmount)}
-              </Text>
+              <Text style={styles.transactionAmount}>{formatAmount(item.totalAmount)}</Text>
             )}
           </View>
           
