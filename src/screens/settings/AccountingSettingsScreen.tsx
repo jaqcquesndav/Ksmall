@@ -8,55 +8,34 @@ import CurrencyService, { Currency, CURRENCIES } from '../../services/CurrencySe
 import AccountingService from '../../services/AccountingService';
 import { useTranslation } from 'react-i18next';
 import logger from '../../utils/logger';
+import useCurrency from '../../hooks/useCurrency';
 
 const AccountingSettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const theme = useTheme();
   const { t } = useTranslation();
   
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>('XOF');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0); // Pour forcer le rafraîchissement
-  const [currencyExpanded, setCurrencyExpanded] = useState(false);
+  const { 
+    selectedCurrency, 
+    loading: currencyLoading, 
+    updateCurrency, 
+    getAllCurrencies 
+  } = useCurrency();
   
-  // Charger la devise actuelle au chargement de l'écran
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        setLoading(true);
-        const currency = await CurrencyService.getSelectedCurrency();
-        setSelectedCurrency(currency);
-      } catch (error) {
-        logger.error('Erreur lors du chargement des paramètres comptables:', error);
-        Alert.alert(
-          'Erreur',
-          'Impossible de charger les paramètres comptables. Veuillez réessayer.'
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadSettings();
-  }, [refreshKey]);
+  const [saving, setSaving] = useState(false);
+  const [currencyExpanded, setCurrencyExpanded] = useState(false);
   
   // Sauvegarder les modifications
   const saveSettings = async () => {
     try {
       setSaving(true);
-      await CurrencyService.setSelectedCurrency(selectedCurrency);
+      await updateCurrency(selectedCurrency);
       
       // Informer l'utilisateur que les paramètres sont mis à jour
       Alert.alert(
         'Succès',
         'Les paramètres comptables ont été mis à jour avec succès.',
-        [
-          {
-            text: 'OK',
-            onPress: () => setRefreshKey(prev => prev + 1) // Rafraîchir les données
-          }
-        ]
+        [{ text: 'OK' }]
       );
     } catch (error) {
       logger.error('Erreur lors de la sauvegarde des paramètres comptables:', error);
@@ -111,10 +90,10 @@ const AccountingSettingsScreen: React.FC = () => {
     <View style={styles.container}>
       <AppHeader 
         title={t('accounting_settings')} 
-        onBack={() => navigation.navigate('AccountingMain')} 
+        onBack={() => navigation.goBack()} 
       />
       
-      {loading ? (
+      {currencyLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>
@@ -172,10 +151,10 @@ const AccountingSettingsScreen: React.FC = () => {
                 </Text>
                 
                 <RadioButton.Group 
-                  onValueChange={value => setSelectedCurrency(value as Currency)}
+                  onValueChange={value => updateCurrency(value as Currency)}
                   value={selectedCurrency}
                 >
-                  {Object.values(CURRENCIES).map((currency) => (
+                  {getAllCurrencies().map((currency) => (
                     <View key={currency.code} style={styles.currencyOption}>
                       <RadioButton.Item
                         label={`${currency.name} (${currency.symbol})`}

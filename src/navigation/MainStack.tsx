@@ -27,6 +27,7 @@ import TokenPurchaseScreen from '../screens/settings/TokenPurchaseScreen';
 import JournalEntryDetailsScreen from '../screens/accounting/JournalEntryDetailsScreen';
 import AddJournalEntryScreen from '../screens/accounting/AddJournalEntryScreen';
 import AccountDetailsScreen from '../screens/accounting/AccountDetailsScreen';
+import AccountingNavigator from './AccountingNavigator';
 
 // Import inventory screens
 import ProductDetailsScreen from '../screens/inventory/ProductDetailsScreen';
@@ -73,7 +74,10 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
       <Stack.Screen name="TokenPurchase" component={TokenPurchaseScreen} />
       
-      {/* Accounting screens */}
+      {/* Navigateur de comptabilité imbriqué */}
+      <Stack.Screen name="AccountingNavigator" component={AccountingNavigator} />
+      
+      {/* Accounting screens accessibles directement */}
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
       <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />
       <Stack.Screen name="AccountDetails" component={AccountDetailsScreen} />

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Button } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import AppHeader from '../../components/common/AppHeader';
 import { RootStackParamList } from '../../navigation/types';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -11,6 +11,19 @@ type AccountingScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const AccountingDashboardScreen: React.FC = () => {
   const navigation = useNavigation<AccountingScreenNavigationProp>();
+
+  // Fonction pour naviguer vers le module de comptabilité avec un écran spécifique
+  const navigateToAccountingScreen = (screenName: string) => {
+    // Utilisation d'une action composite qui permet de naviguer vers un écran dans un navigateur imbriqué
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'AccountingNavigator', 
+        params: {
+          screen: screenName
+        }
+      })
+    );
+  };
   
   return (
     <View style={styles.container}>
@@ -21,7 +34,7 @@ const AccountingDashboardScreen: React.FC = () => {
             name="settings-outline" 
             size={24} 
             color="#333" 
-            onPress={() => navigation.navigate('AccountingSettings')}
+            onPress={() => navigateToAccountingScreen('AccountingSettings')}
           />
         }
       />
@@ -31,21 +44,21 @@ const AccountingDashboardScreen: React.FC = () => {
           <Button 
             mode="contained"
             style={styles.button}
-            onPress={() => navigation.navigate('JournalEntry')}
+            onPress={() => navigateToAccountingScreen('JournalEntry')}
           >
             Journal Comptable
           </Button>
           <Button 
             mode="contained" 
             style={styles.button}
-            onPress={() => navigation.navigate('Ledger')}
+            onPress={() => navigateToAccountingScreen('Ledger')}
           >
             Grand Livre
           </Button>
           <Button 
             mode="contained" 
             style={styles.button}
-            onPress={() => navigation.navigate('FinancialStatements')}
+            onPress={() => navigateToAccountingScreen('FinancialStatements')}
           >
             États Financiers
           </Button>
@@ -53,7 +66,7 @@ const AccountingDashboardScreen: React.FC = () => {
             mode="outlined" 
             style={styles.button}
             icon="cog"
-            onPress={() => navigation.navigate('AccountingSettings')}
+            onPress={() => navigateToAccountingScreen('AccountingSettings')}
           >
             Paramètres Comptables
           </Button>

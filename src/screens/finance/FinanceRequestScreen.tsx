@@ -1,66 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, TextInput, Button, Divider, Chip, ProgressBar, Card, Appbar, useTheme } from 'react-native-paper';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+  Text,
+  TextInput,
+  Card,
+  Button,
+  Appbar,
+  Divider,
+  Chip,
+  ProgressBar,
+  RadioButton
+} from 'react-native-paper';
+import { useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../../navigation/types';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useCurrency } from '../../hooks/useCurrency';
 
-type FinanceRequestRouteProp = RouteProp<RootStackParamList, 'FinanceRequest'>;
+const typeLabels = {
+  loan: 'Prêt bancaire',
+  credit: 'Ligne de crédit',
+  equipment: 'Financement d\'équipement',
+  working_capital: 'Fonds de roulement',
+  growth: 'Financement de croissance',
+};
 
-const FinanceRequestScreen = () => {
-  const theme = useTheme();
+const financialInstitutions = [
+  { id: 'bank1', name: 'BNP Paribas' },
+  { id: 'bank2', name: 'Crédit Agricole' },
+  { id: 'bank3', name: 'Société Générale' },
+  { id: 'bank4', name: 'Crédit Mutuel' },
+  { id: 'bank5', name: 'CIC' },
+];
+
+const FinanceRequestScreen: React.FC = () => {
   const navigation = useNavigation();
-  const route = useRoute<FinanceRequestRouteProp>();
-  const { type, creditScore = 700 } = route.params;
+  const route = useRoute();
+  const { currencyInfo } = useCurrency();
   
+  // Récupérer le type de financement depuis les paramètres de la route
+  const { type } = route.params as { type: string };
+  
+  // États pour le formulaire
   const [amount, setAmount] = useState('');
-  const [term, setTerm] = useState('12');
+  const [term, setTerm] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [selectedBank, setSelectedBank] = useState<string | null>(null);
+  const [selectedBank, setSelectedBank] = useState('');
+  const [interestRate, setInterestRate] = useState('');
+  const [creditScore, setCreditScore] = useState(720); // Score entre 300 et 850
   const [loading, setLoading] = useState(false);
-  const [interestRate, setInterestRate] = useState<string>('');
   
-  const typeLabels: Record<string, string> = {
-    lineOfCredit: 'Ligne de crédit',
-    businessLoan: 'Crédit entreprise',
-    shortTermLoan: 'Crédit court terme',
-    equipmentLease: 'Leasing équipement',
-  };
-
-  const financialInstitutions = [
-    { id: 'bank1', name: 'Banque Nationale' },
-    { id: 'bank2', name: 'Société Générale' },
-    { id: 'bank3', name: 'Crédit du Nord' },
-    { id: 'bank4', name: 'BNP Paribas' },
-    { id: 'bank5', name: 'Crédit Agricole' },
-  ];
-
+  // Calculer le taux d'intérêt estimé en fonction du score de crédit et d'autres facteurs
   useEffect(() => {
-    // Calculate interest rate based on credit score and loan type
-    // This would normally come from a backend API
     let baseRate = 0;
     
-    switch (type) {
-      case 'lineOfCredit':
-        baseRate = creditScore > 700 ? 4.5 : creditScore > 600 ? 6.9 : 9.9;
-        break;
-      case 'businessLoan':
-        baseRate = creditScore > 700 ? 5.2 : creditScore > 600 ? 7.5 : 10.5;
-        break;
-      case 'shortTermLoan':
-        baseRate = creditScore > 700 ? 5.9 : creditScore > 600 ? 8.9 : 11.9;
-        break;
-      case 'equipmentLease':
-        baseRate = creditScore > 700 ? 3.9 : creditScore > 600 ? 5.9 : 8.9;
-        break;
-    }
+    // Déterminer le taux de base en fonction du score de crédit
+    if (creditScore >= 750) baseRate = 3.5;
+    else if (creditScore >= 700) baseRate = 4.0;
+    else if (creditScore >= 650) baseRate = 4.5;
+    else if (creditScore >= 600) baseRate = 5.5;
+    else baseRate = 7.0;
     
-    // Add minor variation based on selected bank
+    // Ajuster en fonction du type de financement
+    if (type === 'loan') baseRate += 0;
+    else if (type === 'credit') baseRate += 0.5;
+    else if (type === 'equipment') baseRate -= 0.3;
+    else if (type === 'working_capital') baseRate += 1.0;
+    else if (type === 'growth') baseRate += 0.7;
+    
+    // Ajuster en fonction de la banque sélectionnée
     if (selectedBank) {
       const bankAdjustment = {
-        bank1: -0.3,
+        bank1: 0.1,
         bank2: 0,
         bank3: 0.2,
         bank4: -0.2,
@@ -133,13 +145,13 @@ const FinanceRequestScreen = () => {
         <Text style={styles.sectionTitle}>Détails de la demande</Text>
         
         <TextInput
-          label="Montant demandé (€)"
+          label={`Montant demandé (${currencyInfo.symbol})`}
           value={amount}
           onChangeText={setAmount}
           keyboardType="numeric"
           style={styles.input}
           mode="outlined"
-          left={<TextInput.Icon icon="currency-eur" />}
+          left={<TextInput.Icon icon={currencyInfo.icon || "cash"} />}
         />
         
         <TextInput
@@ -164,7 +176,7 @@ const FinanceRequestScreen = () => {
         />
 
         <Divider style={styles.divider} />
-        
+
         <Text style={styles.sectionTitle}>Institution financière</Text>
         <Text style={styles.sectionSubtitle}>Sélectionnez votre partenaire financier</Text>
         
@@ -200,7 +212,10 @@ const FinanceRequestScreen = () => {
             {amount && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Montant demandé</Text>
-                <Text style={styles.summaryValue}>{parseInt(amount).toLocaleString()} €</Text>
+                <CurrencyAmount
+                  amount={parseInt(amount)}
+                  style={styles.summaryValue}
+                />
               </View>
             )}
             {term && (
@@ -236,53 +251,57 @@ const styles = StyleSheet.create({
   },
   creditScoreCard: {
     marginBottom: 20,
-    elevation: 2,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  creditScore: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginRight: 12,
+  },
+  creditScoreLabel: {
+    fontSize: 16,
+    color: '#333',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 12,
-    marginTop: 8,
+    marginTop: 16,
+    color: Colors.primary,
   },
   sectionSubtitle: {
     fontSize: 14,
     color: '#757575',
     marginBottom: 12,
   },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
-  },
-  creditScore: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginRight: 12,
-  },
-  creditScoreLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#757575',
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-  },
   input: {
     marginBottom: 16,
     backgroundColor: '#fff',
   },
-  divider: {
-    height: 1,
-    marginVertical: 20,
-  },
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   chip: {
     margin: 4,
+  },
+  radioContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 8,
+  },
+  radioItem: {
+    paddingVertical: 4,
+    paddingLeft: 0,
   },
   summaryCard: {
     marginVertical: 16,
@@ -310,6 +329,10 @@ const styles = StyleSheet.create({
   submitButton: {
     marginVertical: 24,
     paddingVertical: 6,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 20,
   },
 });
 

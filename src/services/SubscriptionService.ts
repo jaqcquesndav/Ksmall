@@ -1,4 +1,4 @@
-import ApiService from './ApiService';
+import { API } from './API';
 import logger from '../utils/logger';
 
 export interface SubscriptionPlan {
@@ -26,7 +26,7 @@ class SubscriptionService {
    */
   async getAvailablePlans(): Promise<SubscriptionPlan[]> {
     try {
-      const response = await ApiService.get('/subscriptions/plans');
+      const response = await API.get('/subscriptions/plans');
       return response.data;
     } catch (error) {
       logger.error('Erreur lors du chargement des plans d\'abonnement:', error);
@@ -39,7 +39,7 @@ class SubscriptionService {
    */
   async getCurrentSubscription(userId: string): Promise<UserSubscription | null> {
     try {
-      const response = await ApiService.get(`/users/${userId}/subscription`);
+      const response = await API.get(`/users/${userId}/subscription`);
       return response.data;
     } catch (error) {
       logger.error('Erreur lors du chargement de l\'abonnement:', error);
@@ -52,7 +52,7 @@ class SubscriptionService {
    */
   async initiatePayment(planId: string, paymentMethod: string): Promise<string> {
     try {
-      const response = await ApiService.post('/subscriptions/payment/initiate', {
+      const response = await API.post('/subscriptions/payment/initiate', {
         planId,
         paymentMethod
       });
@@ -85,7 +85,7 @@ class SubscriptionService {
         } as any);
       }
       
-      const response = await ApiService.post('/subscriptions/payment/verify', formData, {
+      const response = await API.post('/subscriptions/payment/verify', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         }
@@ -103,7 +103,7 @@ class SubscriptionService {
    */
   async cancelSubscription(subscriptionId: string): Promise<boolean> {
     try {
-      await ApiService.post(`/subscriptions/${subscriptionId}/cancel`);
+      await API.post(`/subscriptions/${subscriptionId}/cancel`);
       return true;
     } catch (error) {
       logger.error('Erreur lors de l\'annulation de l\'abonnement:', error);

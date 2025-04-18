@@ -23,6 +23,8 @@ import { Colors } from '../../constants/Colors';
 import useBondIssuances from '../../hooks/useBondIssuances';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const FINANCIAL_INSTITUTIONS = [
   {
@@ -145,6 +147,7 @@ const FinanceInvestmentScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { type } = route.params as { type: string };
+  const { currencyInfo } = useCurrency();
   
   const [selectedInstitution, setSelectedInstitution] = useState(null);
   const [selectedInvestment, setSelectedInvestment] = useState(null);
@@ -221,7 +224,7 @@ const FinanceInvestmentScreen = () => {
 
       Alert.alert(
         'Investissement réussi', 
-        `Vous avez investi ${amountValue.toLocaleString()} € dans "${selectedInvestment.name}". Les écritures comptables ont été créées.`,
+        `Vous avez investi ${amountValue.toLocaleString()} ${currencyInfo.symbol} dans "${selectedInvestment.name}". Les écritures comptables ont été créées.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error) {
@@ -324,7 +327,9 @@ const FinanceInvestmentScreen = () => {
                   </View>
                   <View style={styles.investmentDetails}>
                     <Text style={styles.investmentTerm}>Durée: {investment.term} mois</Text>
-                    <Text style={styles.investmentMinAmount}>Min: {investment.minAmount.toLocaleString()} €</Text>
+                    <Text style={styles.investmentMinAmount}>
+                      Min: <CurrencyAmount amount={investment.minAmount} />
+                    </Text>
                   </View>
                   <Text style={styles.investmentDescription}>{investment.description}</Text>
                 </TouchableOpacity>
@@ -377,17 +382,19 @@ const FinanceInvestmentScreen = () => {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Intérêt annuel:</Text>
-                <Text style={styles.summaryValue}>
-                  {amount ? (parseFloat(amount) * selectedInvestment.rate / 100).toLocaleString() : 0} €
-                </Text>
+                <CurrencyAmount 
+                  amount={amount ? (parseFloat(amount) * selectedInvestment.rate / 100) : 0}
+                  style={styles.summaryValue}
+                />
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Total à échéance:</Text>
-                <Text style={[styles.summaryValue, styles.totalHighlight]}>
-                  {amount ? (
+                <CurrencyAmount 
+                  amount={amount ? (
                     parseFloat(amount) * (1 + (selectedInvestment.rate * (selectedInvestment.term / 12)) / 100)
-                  ).toFixed(2).toLocaleString() : 0} €
-                </Text>
+                  ) : 0}
+                  style={[styles.summaryValue, styles.totalHighlight]}
+                />
               </View>
             </View>
             
@@ -426,11 +433,17 @@ const FinanceInvestmentScreen = () => {
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Total émis</Text>
-              <Text style={styles.statValue}>{totalIssuanceAmount.toLocaleString()} €</Text>
+              <CurrencyAmount
+                amount={totalIssuanceAmount}
+                style={styles.statValue}
+              />
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Intérêts payés</Text>
-              <Text style={styles.statValue}>{totalInterestPaid.toLocaleString()} €</Text>
+              <CurrencyAmount
+                amount={totalInterestPaid}
+                style={styles.statValue}
+              />
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Émissions actives</Text>
@@ -501,9 +514,10 @@ const FinanceInvestmentScreen = () => {
                 <View style={styles.issuanceDetails}>
                   <View style={styles.issuanceDetailRow}>
                     <Text style={styles.issuanceDetailLabel}>Montant émis:</Text>
-                    <Text style={styles.issuanceDetailValue}>
-                      {item.amount.toLocaleString()} €
-                    </Text>
+                    <CurrencyAmount 
+                      amount={item.amount}
+                      style={styles.issuanceDetailValue}
+                    />
                   </View>
                   <View style={styles.issuanceDetailRow}>
                     <Text style={styles.issuanceDetailLabel}>Taux d'intérêt:</Text>
@@ -521,9 +535,10 @@ const FinanceInvestmentScreen = () => {
                   </View>
                   <View style={styles.issuanceDetailRow}>
                     <Text style={styles.issuanceDetailLabel}>Intérêts payés:</Text>
-                    <Text style={styles.issuanceDetailValue}>
-                      {item.total_interest_paid.toLocaleString()} €
-                    </Text>
+                    <CurrencyAmount 
+                      amount={item.total_interest_paid}
+                      style={styles.issuanceDetailValue}
+                    />
                   </View>
                 </View>
                 

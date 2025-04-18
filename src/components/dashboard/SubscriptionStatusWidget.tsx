@@ -1,89 +1,118 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Card, Text, ProgressBar, Button, useTheme, Title } from 'react-native-paper';
+import { Card, Text, Button, ProgressBar, useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { MainStackParamList } from '../../navigation/types';
 import { formatNumber } from '../../utils/formatters';
+import { useNavigation } from '@react-navigation/native';
+import { useCurrency } from '../../hooks/useCurrency';
+import CurrencyAmount from '../common/CurrencyAmount';
 
 interface SubscriptionStatusWidgetProps {
+  subscriptionData?: {
+    plan: string;
+    expiryDate: Date;
+    isActive: boolean;
+    features?: string[];
+    tokens: {
+      total: number;
+      used: number;
+      remaining: number;
+      bonusDate: Date;
+      bonusAmount: number;
+    };
+  };
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   isLandscape?: boolean;
 }
 
-const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
-  collapsed = false,
-  onToggleCollapse = () => {},
-  isLandscape = false
+const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({ 
+  subscriptionData,
+  collapsed: externalCollapsed,
+  onToggleCollapse,
+  isLandscape
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();
-  const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
-
-  // Ces données seraient normalement chargées depuis un service d'API
-  const subscriptionData = {
-    plan: 'Premium',
-    expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 jours à partir d'aujourd'hui
-    features: ['Comptabilité avancée', 'Support prioritaire', 'Rapports illimités', 'API accès'],
+  const navigation = useNavigation<any>();
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const { formatAmount } = useCurrency();
+  
+  // Use either external or internal collapsed state
+  const collapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
+  
+  // Mock data for when subscriptionData is not provided
+  const defaultSubscriptionData = {
+    plan: "Plan Standard",
+    expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+    isActive: true,
+    features: ["Feature 1", "Feature 2"],
     tokens: {
-      // Statistiques de tokens
-      total: 5000000,
-      used: 3200000,
-      remaining: 1800000,
-      bonusDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // Date du prochain bonus mensuel
-      bonusAmount: 1000000, // Bonus mensuel de 1 million de tokens
+      total: 1000,
+      used: 250,
+      remaining: 750,
+      bonusDate: new Date(new Date().setDate(new Date().getDate() + 7)),
+      bonusAmount: 50
     }
   };
-
+  
+  // Use provided subscription data or default mock data
+  const data = subscriptionData || defaultSubscriptionData;
+  
   // Calcul du pourcentage de tokens utilisés
-  const tokenPercentage = subscriptionData.tokens.used / subscriptionData.tokens.total;
-
-  // Fonction pour déterminer la couleur de la barre de progression
-  const getProgressColor = (percentage: number) => {
-    if (percentage > 0.9) return theme.colors.error;
-    if (percentage > 0.7) return '#FFA500'; // Replace with a custom warning color (e.g., orange)
-    return theme.colors.primary; // Replace 'primary' with a valid color property or custom color if needed
-  };
-
-  // Naviguer vers l'écran de gestion des abonnements
-  const navigateToSubscriptions = () => {
-    navigation.navigate('Subscriptions');
-  };
-
-  // Naviguer vers l'écran d'achat de tokens
+  const tokenPercentage = data.tokens.used / data.tokens.total;
+  
+  // Navigation vers les écrans
   const navigateToTokenPurchase = () => {
     navigation.navigate('TokenPurchase');
   };
+  
+  const navigateToSubscriptions = () => {
+    navigation.navigate('Subscriptions');
+  };
+  
+  // Fonction pour déterminer la couleur de la barre de progression en fonction du pourcentage
+  const getProgressColor = (percentage: number) => {
+    if (percentage < 0.5) return theme.colors.primary;
+    if (percentage < 0.75) return '#ff9800'; // orange
+    return '#f44336'; // rouge
+  };
+
+  // Handle toggle collapsed state
+  const handleToggleCollapsed = () => {
+    if (onToggleCollapse) {
+      onToggleCollapse();
+    } else {
+      setInternalCollapsed(!internalCollapsed);
+    }
+  };
 
   return (
-    <Card style={styles.card}>
+    <Card style={[styles.card, isLandscape && styles.cardLandscape]}>
       <Card.Content>
-        <TouchableOpacity 
-          onPress={onToggleCollapse}
-          style={styles.header}
-        >
-          <Title style={styles.title}>{t('subscription_status')}</Title>
-          <MaterialCommunityIcons 
-            name={collapsed ? "chevron-down" : "chevron-up"} 
-            size={24} 
-            color={theme.colors.primary}
-          />
-        </TouchableOpacity>
+        <View style={styles.header}>
+          <Text style={styles.title}>{t('subscription')}</Text>
+          <TouchableOpacity onPress={handleToggleCollapsed}>
+            <MaterialCommunityIcons 
+              name={collapsed ? "chevron-down" : "chevron-up"} 
+              size={24} 
+              color={theme.colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
         
         {!collapsed && (
           <>
             <View style={styles.subscriptionInfo}>
               <View>
                 <Text style={[styles.planName, { color: theme.colors.primary }]}>
-                  {subscriptionData.plan}
+                  {data.plan}
                 </Text>
                 <Text style={styles.expiryDate}>
-                  {t('expires')}: {format(subscriptionData.expiryDate, 'dd MMMM yyyy', {locale: fr})}
+                  {t('expires')}: {format(data.expiryDate, 'dd MMMM yyyy', {locale: fr})}
                 </Text>
               </View>
             </View>
@@ -94,7 +123,7 @@ const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
                 <Text style={styles.tokenTitle}>{t('tokens')}</Text>
                 <View style={styles.tokenBadge}>
                   <Text style={styles.tokenBadgeText}>
-                    {formatNumber(subscriptionData.tokens.remaining)}
+                    {formatNumber(data.tokens.remaining)}
                   </Text>
                 </View>
               </View>
@@ -107,18 +136,20 @@ const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
               
               <View style={styles.tokenStats}>
                 <Text style={styles.tokenDetail}>
-                  {t('used')}: {formatNumber(subscriptionData.tokens.used)}
+                  {t('used')}: {formatNumber(data.tokens.used)}
                 </Text>
                 <Text style={styles.tokenDetail}>
-                  {t('total')}: {formatNumber(subscriptionData.tokens.total)}
+                  {t('total')}: {formatNumber(data.tokens.total)}
                 </Text>
               </View>
               
               <View style={styles.bonusInfo}>
                 <MaterialCommunityIcons name="gift-outline" size={16} color={theme.colors.primary} />
                 <Text style={[styles.bonusText, { color: theme.colors.primary }]}>
-                  {t('next_bonus')}: {format(subscriptionData.tokens.bonusDate, 'dd/MM/yyyy')}
-                  {' (+'}{formatNumber(subscriptionData.tokens.bonusAmount)}{')'}
+                  {t('next_bonus')}: {format(data.tokens.bonusDate, 'dd/MM/yyyy')}
+                  {' (+'}
+                  <CurrencyAmount amount={data.tokens.bonusAmount} />
+                  {')'}
                 </Text>
               </View>
               
@@ -153,6 +184,9 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 16,
     elevation: 2,
+  },
+  cardLandscape: {
+    flexDirection: 'row',
   },
   header: {
     flexDirection: 'row',

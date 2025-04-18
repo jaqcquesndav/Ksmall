@@ -1,13 +1,46 @@
+import CurrencyService from '../services/CurrencyService';
+import { getContextValue } from './contextHelpers';
+import { useCurrency } from '../hooks/useCurrency';  // Updated import path
+
 /**
  * Formatte un montant en devise
  * @param amount - Montant à formater
- * @param currency - Devise (par défaut: 'XOF')
+ * @param options - Options de formatage (optionnel)
+ */
+export async function formatCurrencyAsync(amount: number, options?: {
+  showSymbol?: boolean;
+  symbolPosition?: 'before' | 'after';
+  numberOfDecimals?: number;
+}): Promise<string> {
+  // Get the selected currency first, then format the amount
+  const selectedCurrency = await CurrencyService.getSelectedCurrency();
+  return CurrencyService.formatAmount(amount, selectedCurrency, options);
+}
+
+/**
+ * Formatte un montant en devise (version synchrone)
+ * Cette fonction essaie d'utiliser le contexte React s'il est disponible,
+ * sinon elle utilise une méthode de secours
+ * 
+ * @param amount - Montant à formater
+ * @param currency - Devise (option pour compatibilité avec l'ancien code)
  * @param locale - Locale à utiliser (par défaut: 'fr-FR')
  */
-export function formatCurrency(amount: number, currency: string = 'XOF', locale: string = 'fr-FR'): string {
+export function formatCurrency(amount: number, currency?: string, locale: string = 'fr-FR'): string {
+  try {
+    // Essayer d'abord d'utiliser le contexte (dans un composant React)
+    const ctx = getContextValue(() => useCurrency());
+    if (ctx && ctx.formatAmount) {
+      return ctx.formatAmount(amount);
+    }
+  } catch (error) {
+    // Si on n'est pas dans un contexte React, on continue avec la méthode de secours
+  }
+  
+  // Version synchrone de secours (compatible avec l'ancien code)
   return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: currency,
+    currency: currency || 'XOF',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount);

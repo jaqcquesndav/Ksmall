@@ -6,7 +6,7 @@ import { useTheme } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ChatScreen from '../screens/main/ChatScreen';
-import AccountingScreen from '../screens/main/AccountingScreen';
+import AccountingDashboardScreen from '../screens/accounting/AccountingDashboardScreen';
 import InventoryScreen from '../screens/main/InventoryScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import useOrientation from '../hooks/useOrientation';
@@ -61,7 +61,7 @@ const TabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="Accounting"
-        component={AccountingScreen}
+        component={AccountingDashboardScreen}
         options={{
           title: t('accounting'),
           tabBarIcon: ({ color, size }) => (

@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import AppHeader from '../../components/common/AppHeader';
+import { useCurrency } from '../../hooks/useCurrency';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
 
 interface SubscriptionPlan {
   id: string;
@@ -18,6 +20,7 @@ interface SubscriptionPlan {
 const SubscriptionScreen: React.FC = () => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { formatAmount } = useCurrency();
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [currentPlan, setCurrentPlan] = useState<string>('premium');
   const [isLoading, setIsLoading] = useState(true);
@@ -186,7 +189,10 @@ const SubscriptionScreen: React.FC = () => {
         <Card.Content>
           <Title style={styles.planTitle}>{plan.name}</Title>
           <View style={styles.priceContainer}>
-            <Text style={styles.price}>{plan.price.toLocaleString()} FCFA</Text>
+            <CurrencyAmount 
+              amount={plan.price} 
+              style={styles.price}
+            />
             <Text style={styles.billingCycle}>/ {t(plan.billingCycle)}</Text>
           </View>
 
@@ -220,30 +226,29 @@ const SubscriptionScreen: React.FC = () => {
         return (
           <View>
             <Text style={styles.modalText}>
-              Pour effectuer un paiement manuel, veuillez télécharger un justificatif de paiement (reçu, capture d'écran, etc).
+              Pour effectuer un paiement manuel, veuillez suivre ces étapes :
             </Text>
-            <View style={styles.proofContainer}>
-              {proofDocument ? (
-                <View style={styles.documentInfo}>
-                  <MaterialCommunityIcons name="file-document-outline" size={24} color={theme.colors.primary} />
-                  <Text style={styles.documentName} numberOfLines={1}>{proofDocument.name}</Text>
-                </View>
-              ) : null}
-              <Button
-                mode="contained"
-                onPress={handlePickDocument}
-                style={styles.uploadButton}
-              >
-                {proofDocument ? t('change_document') : t('upload_document')}
-              </Button>
-            </View>
+            <Text>1. Effectuez le virement sur le compte suivant :</Text>
+            <Text style={{ fontWeight: 'bold', marginVertical: 8 }}>
+              IBAN: XX00 0000 0000 0000 0000{'\n'}
+              BIC: XXXXXXXX{'\n'}
+              Référence: SUB-{selectedPlan?.id?.toUpperCase() || 'PREMIUM'}-{new Date().getTime().toString().slice(-6)}
+            </Text>
+            <Text>2. Téléchargez une preuve de paiement :</Text>
+            <Button
+              mode="contained"
+              onPress={handlePickDocument}
+              style={{ marginTop: 16 }}
+            >
+              {t('upload_proof')}
+            </Button>
           </View>
         );
       case 2:
         return (
           <View>
             <Text style={styles.modalText}>
-              Veuillez entrer le code de confirmation qui vous a été envoyé par SMS pour valider votre paiement.
+              Votre justificatif a été reçu. Pour finaliser votre paiement, veuillez saisir le code reçu par SMS :
             </Text>
             <TextInput
               label={t('sms_code')}

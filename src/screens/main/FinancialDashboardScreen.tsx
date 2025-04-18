@@ -1,141 +1,141 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, Card, List, Avatar, Portal, Modal, IconButton, ProgressBar } from 'react-native-paper';
+import { Text, Card, Title, Button, List, Avatar, Divider } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../context/AuthContext';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
-import { MainStackParamList } from '../../navigation/types';
+import { useNavigation } from '@react-navigation/native';
+import { formatDate } from '../../utils/formatters';
+import FinancialService from '../../services/FinancialService';
+import { Colors } from '../../constants/Colors';
 import AppHeader from '../../components/common/AppHeader';
-import { accountingMockData } from '../../data/mockData';
-import logger from '../../utils/logger';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
 
-const FinancialDashboardScreen = () => {
+// Interface pour les données financières
+interface FinancialData {
+  financialStatements: {
+    balanceSheet: {
+      assets: {
+        currentAssets: {
+          cash: number;
+          bank: number;
+          accountsReceivable: number;
+          inventory: number;
+          total: number;
+        };
+        fixedAssets: {
+          equipment: number;
+          buildings: number;
+          land: number;
+          total: number;
+        };
+        totalAssets: number;
+      };
+      liabilities: {
+        currentLiabilities: {
+          accountsPayable: number;
+          shortTermLoans: number;
+          total: number;
+        };
+        longTermLiabilities: {
+          longTermDebt: number;
+          total: number;
+        };
+        totalLiabilities: number;
+      };
+      equity: {
+        capital: number;
+        retainedEarnings: number;
+        total: number;
+      };
+    };
+    incomeStatement: {
+      revenue: number;
+      costOfGoodsSold: number;
+      grossProfit: number;
+      expenses: {
+        salaries: number;
+        rent: number;
+        utilities: number;
+        other: number;
+        total: number;
+      };
+      operatingProfit: number;
+      interestExpense: number;
+      taxExpense: number;
+      netIncome: number;
+    };
+  };
+}
+
+// Interface pour les données d'abonnement
+interface SubscriptionData {
+  plan: string;
+  expiryDate: Date;
+  usedTokens: number;
+  remainingTokens: number;
+  totalTokens: number;
+  creditScore: number;
+}
+
+const FinancialDashboardScreen: React.FC = () => {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const navigation = useNavigation<NavigationProp<MainStackParamList>>();
-  const [loading, setLoading] = useState(true);
-  const [quickActionsVisible, setQuickActionsVisible] = useState(false);
-  const [financialData, setFinancialData] = useState<any>(null);
-  const [subscriptionData, setSubscriptionData] = useState({
-    isActive: true,
-    expiresAt: '2023-12-31',
-    plan: 'Professional',
-    monthlyTokens: 1000000,
-    usedTokens: 236540,
-    remainingTokens: 763460,
-    creditScore: 85,
-  });
-
-  // Load mock data when component mounts
+  const navigation = useNavigation<any>();
+  
+  // États pour les données
+  const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  
+  // Charger les données financières
   useEffect(() => {
-    const loadData = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        setFinancialData(accountingMockData);
+        
+        // Récupérer les données financières
+        const financialStatementsData = await FinancialService.getFinancialStatements();
+        setFinancialData(financialStatementsData);
+        
+        // Récupérer les transactions récentes
+        const recentTransactionsData = await FinancialService.getRecentTransactions();
+        setRecentTransactions(recentTransactionsData);
+        
+        // Récupérer les données d'abonnement
+        const subscriptionInfo = await FinancialService.getSubscriptionInfo();
+        setSubscriptionData(subscriptionInfo);
       } catch (error) {
-        logger.error('Failed to load financial data', error);
+        console.error('Error fetching financial data:', error);
       } finally {
         setLoading(false);
       }
     };
-
-    loadData();
+    
+    fetchData();
   }, []);
-
-  const handleNavigateToJournalEntry = (entryId: string) => {
-    navigation.navigate('JournalEntryDetails', { entryId });
-  };
-
-  const handleNavigateToAccounting = () => {
-    // @ts-ignore - We need to fix the Tabs navigation type
-    navigation.navigate('Tabs', { screen: 'Accounting' });
+  
+  // Navigation vers les écrans liés
+  const handleNavigateToJournalEntry = (id: string) => {
+    navigation.navigate('JournalEntryDetails', { id });
   };
   
-  const handleNavigateToInventory = () => {
-    // @ts-ignore - We need to fix the Tabs navigation type
-    navigation.navigate('Tabs', { screen: 'Inventory' });
+  const handleNavigateToSubscriptions = () => {
+    navigation.navigate('Subscriptions');
   };
-
-  const recentTransactions = financialData?.journalEntries?.slice(0, 5) || [];
-
-  return (
-    <View style={styles.container}>
-      <AppHeader 
-        title={t('financial_dashboard')}
-        subtitle={user?.company}
-      />
-      
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Subscription Status Card */}
-        <Card style={styles.card}>
-          <Card.Title 
-            title={t('subscription_status')} 
-            right={(props) => (
-              <Button 
-                mode="text"
-                onPress={() => navigation.navigate('PaymentMethods')}
-              >
-                {t('manage')}
-              </Button>
-            )}
-          />
-          <Card.Content>
-            <View style={styles.subscriptionRow}>
-              <Text style={styles.subscriptionLabel}>{t('status')}</Text>
-              <View style={[
-                styles.statusBadge, 
-                {backgroundColor: subscriptionData.isActive ? '#E8F5E9' : '#FFEBEE'}
-              ]}>
-                <Text style={{
-                  color: subscriptionData.isActive ? '#2E7D32' : '#C62828',
-                  fontWeight: 'bold'
-                }}>
-                  {subscriptionData.isActive ? t('active') : t('inactive')}
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.subscriptionRow}>
-              <Text style={styles.subscriptionLabel}>{t('plan')}</Text>
-              <Text style={styles.subscriptionValue}>{subscriptionData.plan}</Text>
-            </View>
-            
-            <View style={styles.subscriptionRow}>
-              <Text style={styles.subscriptionLabel}>{t('expires')}</Text>
-              <Text style={styles.subscriptionValue}>{subscriptionData.expiresAt}</Text>
-            </View>
-            
-            <View style={styles.divider} />
-            
-            <Text style={styles.sectionTitle}>{t('token_usage')}</Text>
-            
-            <ProgressBar 
-              progress={subscriptionData.usedTokens / subscriptionData.monthlyTokens} 
-              color="#6200EE" 
-              style={styles.progressBar}
-            />
-            
-            <View style={styles.tokenRow}>
-              <Text style={styles.tokenText}>{t('used')}: {subscriptionData.usedTokens.toLocaleString()}</Text>
-              <Text style={styles.tokenText}>{t('remaining')}: {subscriptionData.remainingTokens.toLocaleString()}</Text>
-            </View>
-            
-            <View style={styles.divider} />
-            
-            <View style={styles.creditScoreContainer}>
-              <Text style={styles.creditScoreLabel}>{t('credit_score')}</Text>
-              <View style={styles.creditScoreCircle}>
-                <Text style={styles.creditScoreValue}>{subscriptionData.creditScore}</Text>
-              </View>
-              <Text style={styles.creditScoreDescription}>
-                {subscriptionData.creditScore > 80 ? t('excellent_credit') : 
-                 subscriptionData.creditScore > 60 ? t('good_credit') : t('fair_credit')}
-              </Text>
-            </View>
-          </Card.Content>
-        </Card>
-        
+  
+  const handleNavigateToTokenPurchase = () => {
+    navigation.navigate('TokenPurchase');
+  };
+  
+  const handleNavigateToFinancialStatements = () => {
+    navigation.navigate('FinancialStatements');
+  };
+  
+  // Rendu conditionnel des données financières
+  const renderFinancialData = () => {
+    if (!financialData) return null;
+    
+    return (
+      <>
         {/* Account Balance Card */}
         <Card style={styles.card}>
           <Card.Title 
@@ -145,188 +145,199 @@ const FinancialDashboardScreen = () => {
           <Card.Content>
             <View style={styles.balanceContainer}>
               <Text style={styles.balanceLabel}>{t('cash')}</Text>
-              <Text style={styles.balanceAmount}>
-                ${financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.cash?.toLocaleString() || '0'}
-              </Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.cash || 0}
+                style={styles.balanceAmount}
+              />
             </View>
             <View style={styles.balanceContainer}>
               <Text style={styles.balanceLabel}>{t('bank')}</Text>
-              <Text style={styles.balanceAmount}>
-                ${financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.bank?.toLocaleString() || '0'}
-              </Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.bank || 0}
+                style={styles.balanceAmount}
+              />
             </View>
             <View style={styles.balanceContainer}>
               <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
-              <Text style={styles.balanceAmount}>
-                ${financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.accountsReceivable?.toLocaleString() || '0'}
-              </Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.accountsReceivable || 0}
+                style={styles.balanceAmount}
+              />
             </View>
             <View style={styles.divider} />
             <View style={styles.balanceContainer}>
-              <Text style={styles.balanceLabel}>{t('total')}</Text>
-              <Text style={styles.totalAmount}>
-                ${financialData?.financialStatements?.balanceSheet?.assets?.currentAssets?.totalCurrentAssets?.toLocaleString() || '0'}
-              </Text>
-            </View>
-          </Card.Content>
-        </Card>
-        
-        {/* Quick Actions Button */}
-        <View style={styles.quickActionsButtonContainer}>
-          <IconButton
-            icon="plus"
-            mode="contained"
-            size={24}
-            onPress={() => setQuickActionsVisible(true)}
-          />
-          <Text style={styles.quickActionsText}>{t('quick_actions')}</Text>
-        </View>
-        
-        {/* Recent Activity Card */}
-        <Card style={styles.card}>
-          <Card.Title 
-            title={t('recent_activity')} 
-            subtitle={t('last_transactions')} 
-            right={(props) => (
-              <IconButton
-                {...props}
-                icon="arrow-right"
-                onPress={handleNavigateToAccounting}
+              <Text style={styles.balanceLabel}>{t('net_position')}</Text>
+              <CurrencyAmount 
+                amount={
+                  (financialData?.financialStatements?.balanceSheet?.assets?.totalAssets || 0) - 
+                  (financialData?.financialStatements?.balanceSheet?.liabilities?.totalLiabilities || 0)
+                }
+                style={styles.totalAmount}
               />
-            )}
-          />
-          <Card.Content>
-            {recentTransactions.length > 0 ? (
-              recentTransactions.map((entry: any) => (
-                <List.Item
-                  key={entry.id}
-                  title={entry.description}
-                  description={entry.date}
-                  left={props => (
-                    <Avatar.Icon
-                      {...props}
-                      size={40}
-                      icon="file-document-outline"
-                      style={{ backgroundColor: entry.status === 'pending' ? '#FFA726' : '#4CAF50' }}
-                    />
-                  )}
-                  right={() => (
-                    <View style={styles.amountContainer}>
-                      <Text style={styles.amount}>
-                        ${entry.lines.reduce((sum: number, line: any) => sum + (line.debit - line.credit), 0).toLocaleString()}
-                      </Text>
-                      <Text style={styles.status}>
-                        {entry.status === 'pending' ? t('pending') : t('completed')}
-                      </Text>
-                    </View>
-                  )}
-                  onPress={() => handleNavigateToJournalEntry(entry.id)}
-                />
-              ))
-            ) : (
-              <Text style={styles.emptyText}>{t('no_recent_transactions')}</Text>
-            )}
-          </Card.Content>
-        </Card>
-        
-        {/* Quick Stats Card */}
-        <Card style={styles.card}>
-          <Card.Title title={t('quick_stats')} />
-          <Card.Content>
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>{t('revenue')}</Text>
-                <Text style={styles.statValue}>
-                  ${financialData?.financialStatements?.incomeStatement?.revenue?.totalRevenue?.toLocaleString() || '0'}
-                </Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>{t('expenses')}</Text>
-                <Text style={styles.statValue}>
-                  ${financialData?.financialStatements?.incomeStatement?.expenses?.totalExpenses?.toLocaleString() || '0'}
-                </Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>{t('profit')}</Text>
-                <Text style={[styles.statValue, { color: '#4CAF50' }]}>
-                  ${financialData?.financialStatements?.incomeStatement?.netProfit?.toLocaleString() || '0'}
-                </Text>
-              </View>
             </View>
           </Card.Content>
           <Card.Actions>
-            <Button
-              onPress={handleNavigateToAccounting}
-            >
-              {t('view_reports')}
+            <Button onPress={handleNavigateToFinancialStatements}>
+              {t('view_financial_statements')}
             </Button>
           </Card.Actions>
         </Card>
-      </ScrollView>
-
-      {/* Quick Actions Modal */}
-      <Portal>
-        <Modal
-          visible={quickActionsVisible}
-          onDismiss={() => setQuickActionsVisible(false)}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <Text style={styles.modalTitle}>{t('quick_actions')}</Text>
-          <View style={styles.quickActionsGrid}>
-            <Button 
-              mode="outlined" 
-              icon="file-plus" 
-              style={styles.quickActionButton}
-              onPress={() => {
-                setQuickActionsVisible(false);
-                handleNavigateToAccounting();
-              }}
-            >
-              {t('new_transaction')}
-            </Button>
-            <Button 
-              mode="outlined" 
-              icon="account-cash" 
-              style={styles.quickActionButton}
-              onPress={() => {
-                setQuickActionsVisible(false);
-                handleNavigateToAccounting();
-              }}
-            >
-              {t('record_payment')}
-            </Button>
-            <Button 
-              mode="outlined" 
-              icon="store" 
-              style={styles.quickActionButton}
-              onPress={() => {
-                setQuickActionsVisible(false);
-                handleNavigateToInventory();
-              }}
-            >
-              {t('add_product')}
-            </Button>
-            <Button 
-              mode="outlined" 
-              icon="receipt" 
-              style={styles.quickActionButton}
-              onPress={() => {
-                setQuickActionsVisible(false);
-                handleNavigateToInventory();
-              }}
-            >
-              {t('create_invoice')}
-            </Button>
+        
+        {/* Income Statement Card */}
+        <Card style={styles.card}>
+          <Card.Title 
+            title={t('income_statement')} 
+            subtitle={t('current_month')} 
+          />
+          <Card.Content>
+            <View style={styles.balanceContainer}>
+              <Text style={styles.balanceLabel}>{t('revenue')}</Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.incomeStatement?.revenue || 0}
+                style={styles.balanceAmount}
+              />
+            </View>
+            <View style={styles.balanceContainer}>
+              <Text style={styles.balanceLabel}>{t('expenses')}</Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.incomeStatement?.expenses?.total || 0}
+                style={styles.balanceAmount}
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.balanceContainer}>
+              <Text style={styles.balanceLabel}>{t('net_income')}</Text>
+              <CurrencyAmount 
+                amount={financialData?.financialStatements?.incomeStatement?.netIncome || 0}
+                style={[
+                  styles.totalAmount,
+                  { color: (financialData?.financialStatements?.incomeStatement?.netIncome || 0) >= 0 
+                    ? '#4CAF50' 
+                    : '#F44336' 
+                  }
+                ]}
+              />
+            </View>
+          </Card.Content>
+        </Card>
+      </>
+    );
+  };
+  
+  // Rendu de la carte des transactions récentes
+  const renderRecentTransactions = () => {
+    return (
+      <Card style={styles.card}>
+        <Card.Title 
+          title={t('recent_transactions')} 
+          subtitle={t('last_entries')} 
+        />
+        <Card.Content>
+          {recentTransactions.length > 0 ? (
+            recentTransactions.map((entry: any) => (
+              <List.Item
+                key={entry.id}
+                title={entry.description}
+                description={entry.date}
+                left={props => (
+                  <Avatar.Icon
+                    {...props}
+                    size={40}
+                    icon="file-document-outline"
+                    style={{ backgroundColor: entry.status === 'pending' ? '#FFA726' : '#4CAF50' }}
+                  />
+                )}
+                right={() => (
+                  <View style={styles.amountContainer}>
+                    <CurrencyAmount
+                      amount={entry.lines.reduce((sum: number, line: any) => sum + (line.debit - line.credit), 0)}
+                      style={styles.amount}
+                    />
+                    <Text style={styles.status}>
+                      {entry.status === 'pending' ? t('pending') : t('completed')}
+                    </Text>
+                  </View>
+                )}
+                onPress={() => handleNavigateToJournalEntry(entry.id)}
+              />
+            ))
+          ) : (
+            <Text style={styles.emptyText}>{t('no_recent_transactions')}</Text>
+          )}
+        </Card.Content>
+      </Card>
+    );
+  };
+  
+  // Rendu de la carte d'abonnement et de tokens
+  const renderSubscriptionCard = () => {
+    if (!subscriptionData) return null;
+    
+    return (
+      <Card style={styles.card}>
+        <Card.Title 
+          title={t('subscription_tokens')}
+        />
+        <Card.Content>
+          <View style={styles.subscriptionRow}>
+            <Text style={styles.subscriptionLabel}>{t('plan')}:</Text>
+            <Text style={styles.subscriptionValue}>{subscriptionData.plan}</Text>
           </View>
-          <Button 
-            mode="contained"
-            onPress={() => setQuickActionsVisible(false)}
-            style={styles.closeButton}
-          >
-            {t('close')}
+          <View style={styles.subscriptionRow}>
+            <Text style={styles.subscriptionLabel}>{t('expires')}:</Text>
+            <Text style={styles.subscriptionValue}>
+              {formatDate(subscriptionData.expiryDate.toISOString())}
+            </Text>
+          </View>
+          <View style={styles.subscriptionRow}>
+            <Text style={styles.subscriptionLabel}>{t('status')}:</Text>
+            <View style={[styles.statusBadge, { backgroundColor: Colors.primary + '30' }]}>
+              <Text style={{ color: Colors.primary }}>{t('active')}</Text>
+            </View>
+          </View>
+          
+          <Divider style={{ marginVertical: 10 }} />
+          
+          <Text style={styles.sectionTitle}>{t('tokens')}</Text>
+          <View style={styles.tokenRow}>
+            <Text style={styles.tokenText}>{t('used')}: {subscriptionData.usedTokens.toLocaleString()}</Text>
+            <Text style={styles.tokenText}>{t('remaining')}: {subscriptionData.remainingTokens.toLocaleString()}</Text>
+          </View>
+          
+          <View style={styles.divider} />
+          
+          <View style={styles.creditScoreContainer}>
+            <Text style={styles.creditScoreLabel}>{t('credit_score')}</Text>
+            <View style={styles.creditScoreCircle}>
+              <Text style={styles.creditScoreValue}>{subscriptionData.creditScore}</Text>
+            </View>
+            <Text style={styles.creditScoreDescription}>
+              {subscriptionData.creditScore > 80 ? t('excellent_credit') : 
+               subscriptionData.creditScore > 60 ? t('good_credit') : t('fair_credit')}
+            </Text>
+          </View>
+        </Card.Content>
+        <Card.Actions style={styles.cardActions}>
+          <Button onPress={handleNavigateToTokenPurchase}>
+            {t('buy_tokens')}
           </Button>
-        </Modal>
-      </Portal>
+          <Button onPress={handleNavigateToSubscriptions}>
+            {t('manage_subscription')}
+          </Button>
+        </Card.Actions>
+      </Card>
+    );
+  };
+  
+  return (
+    <View style={styles.container}>
+      <AppHeader title={t('financial_dashboard')} />
+      
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        {renderSubscriptionCard()}
+        {renderFinancialData()}
+        {renderRecentTransactions()}
+      </ScrollView>
     </View>
   );
 };
@@ -336,7 +347,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  scrollContent: {
+  scrollView: {
+    flex: 1,
+  },
+  content: {
     padding: 16,
     paddingBottom: 32,
   },
@@ -385,55 +399,25 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginVertical: 12,
   },
   statItem: {
-    flex:1,
+    flex: 1,
     alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 8,
   },
   statValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  quickActionsButtonContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  quickActionsText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#6200EE',
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    margin: 20,
-    padding: 20,
-    borderRadius: 8,
-  },
-  modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  quickActionButton: {
-    width: '48%',
-    marginBottom: 16,
-  },
-  closeButton: {
-    marginTop: 8,
+    color: Colors.primary,
   },
   subscriptionRow: {
     flexDirection: 'row',
@@ -467,37 +451,48 @@ const styles = StyleSheet.create({
   tokenRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginVertical: 8,
   },
   tokenText: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 14,
   },
   creditScoreContainer: {
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 12,
   },
   creditScoreLabel: {
-    fontSize: 16,
+    fontSize: 14,
+    color: '#666',
     marginBottom: 8,
   },
   creditScoreCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#6200EE',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 8,
+    marginBottom: 8,
   },
   creditScoreValue: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.primary,
   },
   creditScoreDescription: {
     fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+  },
+  cardActions: {
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  quickActionButton: {
+    width: '48%',
+    marginBottom: 16,
+  },
+  closeButton: {
+    marginTop: 8,
   },
 });
 

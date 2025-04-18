@@ -29,7 +29,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 const AccountingNavigator = () => {
   return (
     <Stack.Navigator 
-      initialRouteName="AccountingMain"
+      initialRouteName="AccountingDashboard"
       screenOptions={{
         headerShown: false
       }}

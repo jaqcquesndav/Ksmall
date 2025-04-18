@@ -1,26 +1,28 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
-  TextInput, 
+  Image, 
+  SafeAreaView, 
   ScrollView, 
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert
+  KeyboardAvoidingView, 
+  Platform, 
+  Alert,
+  TextInput
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useTheme } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { ThemeContext } from '../../context/ThemeContext';
+import { ActivityIndicator } from 'react-native-paper';
+import useCurrency from '../../hooks/useCurrency';
 import { validateNumeric } from '../../utils/validation';
 
 const PaymentScreen = () => {
-  const { theme } = useContext(ThemeContext);
   const navigation = useNavigation();
+  const theme = useTheme();
+  const { formatAmount, currencyInfo, loading: currencyLoading } = useCurrency();
+  
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
   const [note, setNote] = useState('');
@@ -34,6 +36,21 @@ const PaymentScreen = () => {
     { id: 'mpesa', name: 'M-Pesa', icon: require('../../../assets/mpesa-icon.png') },
     { id: 'cash', name: 'Cash', icon: require('../../../assets/cash-icon.png') },
   ];
+
+  // Fonction de formatage pour l'entrée de montant
+  const handleAmountChange = useCallback((text: string) => {
+    // Conserver uniquement les chiffres et le point décimal
+    const formattedText = text.replace(/[^0-9.]/g, '');
+    
+    // S'assurer qu'il n'y a qu'un seul point décimal
+    const decimalCount = (formattedText.match(/\./g) || []).length;
+    if (decimalCount > 1) {
+      const parts = formattedText.split('.');
+      setAmount(parts[0] + '.' + parts.slice(1).join(''));
+    } else {
+      setAmount(formattedText);
+    }
+  }, []);
 
   const handlePayment = () => {
     // Form validation
@@ -77,20 +94,6 @@ const PaymentScreen = () => {
     }, 2000);
   };
   
-  const formatAmount = (text: string) => {
-    // Remove non-numeric characters except decimal point
-    let formattedText = text.replace(/[^0-9.]/g, '');
-    
-    // Ensure only one decimal point
-    const decimalCount = (formattedText.match(/\./g) || []).length;
-    if (decimalCount > 1) {
-      const parts = formattedText.split('.');
-      formattedText = parts[0] + '.' + parts.slice(1).join('');
-    }
-    
-    setAmount(formattedText);
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
@@ -115,12 +118,14 @@ const PaymentScreen = () => {
               <TextInput
                 style={[styles.amountInput, { color: theme.colors.text }]}
                 value={amount}
-                onChangeText={formatAmount}
+                onChangeText={handleAmountChange}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor={theme.colors.text + '50'}
               />
-              <Text style={[styles.currency, { color: theme.colors.text }]}>XAF</Text>
+              <Text style={[styles.currency, { color: theme.colors.text }]}>
+                {currencyLoading ? '...' : currencyInfo?.symbol || 'XOF'}
+              </Text>
             </View>
             {errors.amount ? <Text style={styles.errorText}>{errors.amount}</Text> : null}
           </View>

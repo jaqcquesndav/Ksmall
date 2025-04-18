@@ -12,6 +12,8 @@ import EmptyState from '../../components/common/EmptyState';
 import { Colors } from '../../constants/Colors';
 import AccountingService from '../../services/AccountingService';
 import { formatDate, formatCurrency } from '../../utils/formatters';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useTranslation } from 'react-i18next';
 
 // Types pour le grand livre
 interface LedgerAccount {
@@ -44,6 +46,7 @@ interface FiscalYear {
 const LedgerScreen: React.FC = () => {
   const navigation = useNavigation();
   const theme = useTheme();
+  const { t } = useTranslation();
   
   // États pour les filtres et la recherche
   const [searchQuery, setSearchQuery] = useState('');
@@ -414,9 +417,10 @@ const LedgerScreen: React.FC = () => {
             <Text style={styles.accountName}>{account.accountName}</Text>
           </View>
           <View style={styles.balanceInfo}>
-            <Text style={styles.balanceAmount}>
-              {formatCurrency(account.currentBalance)}
-            </Text>
+            <CurrencyAmount 
+              amount={account.currentBalance}
+              style={styles.balanceAmount}
+            />
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 
               size={20} 
@@ -429,26 +433,30 @@ const LedgerScreen: React.FC = () => {
           <View style={styles.transactionsContainer}>
             <View style={styles.accountSummary}>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Solde initial:</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(account.openingBalance)}</Text>
+                <Text style={styles.summaryLabel}>{t('opening_balance')}:</Text>
+                <CurrencyAmount 
+                  amount={account.openingBalance}
+                  style={styles.summaryValue}
+                />
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Solde final:</Text>
-                <Text style={[styles.summaryValue, styles.finalBalance]}>
-                  {formatCurrency(account.currentBalance)}
-                </Text>
+                <Text style={styles.summaryLabel}>{t('final_balance')}:</Text>
+                <CurrencyAmount
+                  amount={account.currentBalance}
+                  style={[styles.summaryValue, styles.finalBalance]}
+                />
               </View>
             </View>
             
             <Divider style={styles.divider} />
             
             <View style={styles.transactionHeader}>
-              <Text style={[styles.transactionHeaderCell, { flex: 1 }]}>Date</Text>
-              <Text style={[styles.transactionHeaderCell, { flex: 1 }]}>Réf</Text>
-              <Text style={[styles.transactionHeaderCell, { flex: 2 }]}>Description</Text>
-              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>Débit</Text>
-              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>Crédit</Text>
-              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>Solde</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 1 }]}>{t('date')}</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 1 }]}>{t('reference')}</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 2 }]}>{t('description')}</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>{t('debit')}</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>{t('credit')}</Text>
+              <Text style={[styles.transactionHeaderCell, { flex: 1, textAlign: 'right' }]}>{t('balance')}</Text>
             </View>
             
             {account.transactions.map(transaction => (
@@ -463,24 +471,30 @@ const LedgerScreen: React.FC = () => {
                   {transaction.description}
                 </Text>
                 <Text style={[styles.transactionCell, { flex: 1, textAlign: 'right' }]}>
-                  {transaction.debit > 0 ? formatCurrency(transaction.debit) : ''}
+                  {transaction.debit > 0 ? <CurrencyAmount amount={transaction.debit} showSymbol={false} /> : ''}
                 </Text>
                 <Text style={[styles.transactionCell, { flex: 1, textAlign: 'right' }]}>
-                  {transaction.credit > 0 ? formatCurrency(transaction.credit) : ''}
+                  {transaction.credit > 0 ? <CurrencyAmount amount={transaction.credit} showSymbol={false} /> : ''}
                 </Text>
                 <Text style={[styles.transactionCell, { flex: 1, textAlign: 'right', fontWeight: 'bold' }]}>
-                  {formatCurrency(transaction.balance)}
+                  <CurrencyAmount amount={transaction.balance} showSymbol={false} />
                 </Text>
               </View>
             ))}
             
             <View style={styles.transactionTotals}>
-              <Text style={[styles.totalLabel, { flex: 4 }]}>Totaux</Text>
+              <Text style={[styles.totalLabel, { flex: 4 }]}>{t('totals')}</Text>
               <Text style={[styles.totalValue, { flex: 1, textAlign: 'right' }]}>
-                {formatCurrency(account.transactions.reduce((sum, t) => sum + t.debit, 0))}
+                <CurrencyAmount 
+                  amount={account.transactions.reduce((sum, t) => sum + t.debit, 0)} 
+                  showSymbol={false}
+                />
               </Text>
               <Text style={[styles.totalValue, { flex: 1, textAlign: 'right' }]}>
-                {formatCurrency(account.transactions.reduce((sum, t) => sum + t.credit, 0))}
+                <CurrencyAmount 
+                  amount={account.transactions.reduce((sum, t) => sum + t.credit, 0)} 
+                  showSymbol={false}
+                />
               </Text>
               <Text style={[styles.totalValue, { flex: 1 }]} />
             </View>
@@ -490,7 +504,7 @@ const LedgerScreen: React.FC = () => {
                 mode="outlined" 
                 onPress={() => navigation.navigate('AccountDetails', { accountId: account.id })}
               >
-                Détails du compte
+                {t('account_details')}
               </Button>
             </View>
           </View>
@@ -503,8 +517,8 @@ const LedgerScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <AppHeader 
-        title="Grand Livre" 
-        onBack={() => navigation.navigate('AccountingMain')}
+        title={t('general_ledger')} 
+        onBack={() => navigation.goBack()}
       />
       
       <View style={styles.filtersContainer}>

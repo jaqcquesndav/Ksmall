@@ -71,7 +71,8 @@ class DashboardAccountingService {
    * @returns Le montant formaté avec le symbole de la devise
    */
   async formatCurrency(amount: number): Promise<string> {
-    return await CurrencyService.formatAmount(amount);
+    const currency = await CurrencyService.getSelectedCurrency();
+    return await CurrencyService.formatAmount(amount, currency);
   }
 
   /**
@@ -278,7 +279,8 @@ class DashboardAccountingService {
    * Récupère les informations sur la devise actuellement utilisée
    */
   async getCurrentCurrencyInfo() {
-    return await CurrencyService.getSelectedCurrencyInfo();
+    const currency = await CurrencyService.getSelectedCurrency();
+    return CurrencyService.getCurrencyInfo(currency);
   }
 }
 

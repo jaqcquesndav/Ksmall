@@ -18,10 +18,13 @@ import { useTranslation } from 'react-i18next';
 import AppHeader from '../../components/common/AppHeader';
 import { useAuth } from '../../context/AuthContext';
 import logger from '../../utils/logger';
+import { useCurrency } from '../../hooks/useCurrency';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
 
 const PaymentMethodsScreen: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { formatAmount } = useCurrency();
   const [paymentMethods, setPaymentMethods] = useState([
     { id: '1', type: 'mobile_money', provider: 'M-Pesa', number: '+243 XXX XXX XXX', isDefault: true },
     { id: '2', type: 'bank', name: 'Rawbank', accountNumber: '**** 5678', isDefault: false },
@@ -228,9 +231,13 @@ const PaymentMethodsScreen: React.FC = () => {
             {subscriptionPlans.map(plan => (
               <View key={plan.id} style={styles.planOption}>
                 <RadioButton.Item
-                  label={`${plan.name} - $${plan.price}/month`}
+                  label={`${plan.name}`}
                   value={plan.id}
                 />
+                <View style={styles.planPriceContainer}>
+                  <CurrencyAmount amount={plan.price} />
+                  <Text style={styles.perMonth}>/month</Text>
+                </View>
                 <Text style={styles.planTokens}>
                   {plan.tokens.toLocaleString()} {t('tokens_per_month')}
                 </Text>
@@ -244,7 +251,7 @@ const PaymentMethodsScreen: React.FC = () => {
           {subscriptionAddons.map(addon => (
             <View key={addon.id} style={styles.addonOption}>
               <RadioButton.Item
-                label={`${addon.name} - $${addon.price}/month`}
+                label={`${addon.name}`}
                 value={addon.id}
                 status={selectedAddons.includes(addon.id) ? 'checked' : 'unchecked'}
                 onPress={() => {
@@ -255,6 +262,10 @@ const PaymentMethodsScreen: React.FC = () => {
                   }
                 }}
               />
+              <View style={styles.planPriceContainer}>
+                <CurrencyAmount amount={addon.price} />
+                <Text style={styles.perMonth}>/month</Text>
+              </View>
               <Text style={styles.addonDescription}>{addon.description}</Text>
             </View>
           ))}
@@ -281,7 +292,10 @@ const PaymentMethodsScreen: React.FC = () => {
           
           <View style={styles.totalContainer}>
             <Text style={styles.totalLabel}>{t('total')}</Text>
-            <Text style={styles.totalAmount}>${calculateTotal()}/month</Text>
+            <View style={styles.totalAmountContainer}>
+              <CurrencyAmount amount={calculateTotal()} style={styles.totalAmount} />
+              <Text style={styles.perMonth}>/month</Text>
+            </View>
           </View>
           
           <View style={styles.modalActions}>
@@ -541,6 +555,22 @@ const styles = StyleSheet.create({
   },
   confirmationText: {
     marginBottom: 16,
+  },
+  planPriceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 30,
+    marginTop: -8,
+    marginBottom: 8,
+  },
+  perMonth: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  totalAmountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
 

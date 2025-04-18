@@ -80,6 +80,9 @@ export type MainStackParamList = {
   Subscriptions: undefined;
   TokenPurchase: undefined;
   
+  // Accounting Navigator
+  AccountingNavigator: undefined | { screen: string; params?: object };
+  
   // Accounting screens
   JournalEntryDetails: { entryId: string };
   AddJournalEntry: { draftId?: string };

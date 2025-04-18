@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import logger from '../utils/logger';
-import ApiService from './ApiService';
+import API from './API';
 import { useAuth } from '../context/AuthContext';
+import CurrencyService from './CurrencyService';
 
 // Clés pour le stockage local
 const TOKEN_BALANCE_KEY = 'tokens.balance';
@@ -29,11 +30,16 @@ export interface TokenTransaction {
 class TokenService {
   /**
    * Récupère les plans de tokens disponibles
+   * Note: Les prix sont indépendants de la devise et seront formatés à l'affichage
    */
   async getTokenPlans(): Promise<TokenPlan[]> {
     try {
-      const response = await ApiService.get('/tokens/plans');
-      return response.data.plans;
+      const response = await API.get('/tokens/plans');
+      // Vérifier si la réponse contient les plans
+      if (response.data && response.data.plans) {
+        return response.data.plans;
+      }
+      throw new Error('Format de réponse invalide');
     } catch (error) {
       logger.error('Erreur lors de la récupération des plans de tokens:', error);
       // En cas d'erreur, on renvoie des plans par défaut
@@ -51,14 +57,25 @@ class TokenService {
    */
   async getTokenBalance(): Promise<number> {
     try {
-      const response = await ApiService.get('/tokens/balance');
+      const userId = (await useAuth()?.user?.uid) || '';
+      
+      if (!userId) {
+        const storedBalance = await AsyncStorage.getItem(TOKEN_BALANCE_KEY);
+        return storedBalance ? parseInt(storedBalance) : 0;
+      }
+      
+      const response = await API.get(`/users/${userId}/tokens/balance`);
       return response.data.balance;
     } catch (error) {
       logger.error('Erreur lors de la récupération du solde de tokens:', error);
-      // Vérifier si nous sommes en mode démo - utiliser AsyncStorage directement
-      const isDemo = await AsyncStorage.getItem('isDemo') === 'true';
-      // Renvoyer une valeur par défaut
-      return isDemo ? 1000000 : 0;
+      
+      // Essayer de récupérer depuis le stockage local
+      try {
+        const storedBalance = await AsyncStorage.getItem(TOKEN_BALANCE_KEY);
+        return storedBalance ? parseInt(storedBalance) : 0;
+      } catch {
+        return 0;
+      }
     }
   }
 
@@ -82,16 +99,16 @@ class TokenService {
           name: proofDocument.name || 'payment_proof'
         } as any);
         
-        const uploadResponse = await ApiService.post('/uploads/payment-proof', formData, {
+        const uploadResponse = await API.post('/uploads/payment-proof', formData, {
           headers: {
             'Content-Type': 'multipart/form-data'
           }
         });
         documentId = uploadResponse.data.documentId;
       }
-
+      
       // Ensuite vérifier le code et finaliser l'achat
-      const response = await ApiService.post('/tokens/purchase/verify', {
+      const response = await API.post('/tokens/purchase/verify', {
         planId,
         tokenAmount,
         verificationCode,
@@ -114,10 +131,15 @@ class TokenService {
     paymentMethod: string
   ): Promise<{ success: boolean; redirectUrl?: string; reference?: string }> {
     try {
-      const response = await ApiService.post('/tokens/purchase/initiate', {
+      // Récupérer les informations sur la devise actuelle pour le processus de paiement
+      const currency = await CurrencyService.getSelectedCurrency();
+      const currencyInfo = CurrencyService.getCurrencyInfo(currency);
+      
+      const response = await API.post('/tokens/purchase/initiate', {
         planId,
         tokenAmount,
-        paymentMethod
+        paymentMethod,
+        currencyCode: currencyInfo?.code || 'XOF'  // Utiliser la devise configurée par l'utilisateur
       });
       
       return {
@@ -136,7 +158,7 @@ class TokenService {
    */
   async getTokenTransactionHistory(page = 1, limit = 10): Promise<any> {
     try {
-      const response = await ApiService.get(`/tokens/transactions?page=${page}&limit=${limit}`);
+      const response = await API.get(`/tokens/transactions?page=${page}&limit=${limit}`);
       return response.data;
     } catch (error) {
       logger.error('Erreur lors de la récupération de l\'historique des transactions:', error);

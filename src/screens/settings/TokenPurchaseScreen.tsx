@@ -1,127 +1,104 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, Button, Card, RadioButton, Title, useTheme, TextInput, Divider, Portal, Modal } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
+import { Text, Button, Card, RadioButton, Portal, Modal, TextInput, useTheme } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { MainStackParamList } from '../../navigation/types';
-import AppHeader from '../../components/common/AppHeader';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { formatNumber } from '../../utils/formatters';
+import { useTranslation } from 'react-i18next';
+import AppHeader from '../../components/common/AppHeader';
 import * as DocumentPicker from 'expo-document-picker';
+import { formatNumber } from '../../utils/formatters';
+import TokenService from '../../services/TokenService';
+import { useCurrency } from '../../hooks/useCurrency';
+import ManualPaymentModal, { ManualPaymentDetails } from '../../components/payment/ManualPaymentModal';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
 
-const TokenPurchaseScreen: React.FC = () => {
+const TokenPurchaseScreen = () => {
+  const navigation = useNavigation<any>();
   const { t } = useTranslation();
   const theme = useTheme();
-  const navigation = useNavigation<StackNavigationProp<MainStackParamList>>();
-  const [selectedPlan, setSelectedPlan] = useState('plan3');
-  const [customTokens, setCustomTokens] = useState('');
+  const { formatAmount, currencyInfo } = useCurrency();
+  
+  const [selectedPlan, setSelectedPlan] = useState('plan2');
   const [paymentMethod, setPaymentMethod] = useState('creditCard');
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [manualPaymentStep, setManualPaymentStep] = useState(1);
-  const [proofDocument, setProofDocument] = useState<any>(null);
-  const [smsCode, setSmsCode] = useState('');
-
-  // Plans disponibles
-  const tokenPlans = [
+  const [manualPaymentModalVisible, setManualPaymentModalVisible] = useState(false);
+  const [tokenPlans, setTokenPlans] = useState<any[]>([
+    // Default values to prevent undefined errors
     { id: 'plan1', tokens: 500000, price: 10000, label: 'Basic' },
     { id: 'plan2', tokens: 1000000, price: 18000, label: 'Standard' },
     { id: 'plan3', tokens: 2500000, price: 40000, label: 'Premium' },
     { id: 'plan4', tokens: 5000000, price: 75000, label: 'Enterprise' },
-    { id: 'custom', tokens: 0, price: 0, label: 'Custom' }
-  ];
+  ]);
 
-  // Calcul du prix pour un plan personnalisé
-  const calculateCustomPrice = (tokens: number) => {
-    // Prix dégressif en fonction du volume
-    if (tokens >= 5000000) return tokens / 5000000 * 75000 * 0.9; // 10% de réduction
-    if (tokens >= 2500000) return tokens / 2500000 * 40000 * 0.95; // 5% de réduction
-    if (tokens >= 1000000) return tokens / 1000000 * 18000;
-    return tokens / 500000 * 10000;
-  };
+  // Charger les plans de tokens avec le service
+  useEffect(() => {
+    const loadTokenPlans = async () => {
+      try {
+        const plans = await TokenService.getTokenPlans();
+        if (plans && plans.length > 0) {
+          setTokenPlans(plans);
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des plans de tokens:', error);
+        // Les plans par défaut sont déjà définis dans useState
+      }
+    };
+    
+    loadTokenPlans();
+  }, []);
 
-  // Récupérer le plan sélectionné
   const getSelectedPlan = () => {
-    if (selectedPlan === 'custom') {
-      const tokens = parseInt(customTokens, 10) || 0;
-      return {
-        id: 'custom',
-        tokens,
-        price: calculateCustomPrice(tokens),
-        label: 'Custom'
-      };
-    }
-    return tokenPlans.find(plan => plan.id === selectedPlan) || tokenPlans[0];
+    const plan = tokenPlans.find(plan => plan.id === selectedPlan);
+    return plan || tokenPlans[0] || { id: 'default', tokens: 0, price: 0, label: 'Default' };
   };
 
   const handleInitiatePurchase = () => {
-    setPaymentModalVisible(true);
+    if (paymentMethod === 'manualPayment') {
+      setManualPaymentModalVisible(true);
+    } else {
+      setPaymentModalVisible(true);
+    }
   };
 
-  const handlePickDocument = async () => {
+  const handleManualPaymentComplete = async (paymentDetails: ManualPaymentDetails) => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
-        copyToCacheDirectory: true,
-      });
-
-      if (result.canceled === false) {
-        setProofDocument(result.assets[0]);
-        setManualPaymentStep(2);
-        // Simuler l'envoi d'un SMS après téléchargement du justificatif
+      // Dans une implémentation réelle, vous appelleriez votre service de paiement
+      const plan = getSelectedPlan();
+      
+      // Exemple d'utilisation du service de tokens pour vérifier l'achat
+      const success = await TokenService.verifyTokenPurchase(
+        plan.id,
+        plan.tokens,
+        paymentDetails.smsVerificationCode,
+        paymentDetails.proofDocument
+      );
+      
+      if (success) {
         Alert.alert(
-          'Justificatif reçu',
-          'Votre justificatif a été reçu. Un code SMS va vous être envoyé pour confirmer le paiement.',
-          [{ text: 'OK' }]
+          'Paiement validé',
+          `${formatNumber(plan.tokens)} tokens ont été ajoutés à votre compte.`,
+          [
+            { 
+              text: 'OK', 
+              onPress: () => {
+                setManualPaymentModalVisible(false);
+                navigation.navigate('MainTabs', { screen: 'Dashboard' });
+              }
+            }
+          ]
         );
+      } else {
+        Alert.alert('Erreur de validation', 'Impossible de valider votre paiement. Veuillez réessayer.');
       }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de sélectionner le document');
+      console.error('Erreur lors du traitement du paiement manuel:', error);
+      Alert.alert('Erreur', 'Une erreur s\'est produite lors du traitement de votre paiement.');
     }
-  };
-
-  const handleVerifyCode = () => {
-    if (smsCode.trim() === '') {
-      Alert.alert('Erreur', 'Veuillez entrer le code reçu par SMS');
-      return;
-    }
-
-    // Dans une application réelle, vous enverriez ce code à votre backend pour validation
-    // Ici nous simulons une validation simple (le code est "123456")
-    if (smsCode === '123456') {
-      Alert.alert(
-        'Paiement validé',
-        'Votre paiement a été validé avec succès. Vos tokens ont été ajoutés à votre compte.',
-        [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              const plan = getSelectedPlan();
-              setPaymentModalVisible(false);
-              setManualPaymentStep(1);
-              setSmsCode('');
-              setProofDocument(null);
-              // Navigate back to Dashboard using correct typing
-              navigation.navigate('MainTabs' as any, { screen: 'Dashboard' } as any);
-            }
-          }
-        ]
-      );
-    } else {
-      Alert.alert('Code incorrect', 'Le code que vous avez entré est incorrect. Veuillez réessayer.');
-    }
-  };
-
-  const handleClosePaymentModal = () => {
-    setPaymentModalVisible(false);
-    setManualPaymentStep(1);
-    setSmsCode('');
-    setProofDocument(null);
   };
 
   const handleProcessPayment = () => {
     if (paymentMethod === 'manualPayment') {
-      // Ne rien faire ici, le processus est géré dans le modal
+      // Cette partie est maintenant gérée par le modal de paiement manuel
       return;
     }
 
@@ -142,7 +119,7 @@ const TokenPurchaseScreen: React.FC = () => {
                   text: 'OK',
                   onPress: () => {
                     setPaymentModalVisible(false);
-                    navigation.navigate('MainTabs' as any, { screen: 'Dashboard' } as any);
+                    navigation.navigate('MainTabs', { screen: 'Dashboard' });
                   }
                 }
               ]
@@ -157,189 +134,89 @@ const TokenPurchaseScreen: React.FC = () => {
     );
   };
 
-  const renderManualPaymentStep = () => {
-    switch (manualPaymentStep) {
-      case 1:
-        return (
-          <View>
-            <Text style={styles.modalText}>
-              Pour effectuer un paiement manuel, veuillez télécharger un justificatif de paiement (reçu, capture d'écran, etc).
-            </Text>
-            <View style={styles.proofContainer}>
-              {proofDocument ? (
-                <View style={styles.documentInfo}>
-                  <MaterialCommunityIcons name="file-document-outline" size={24} color={theme.colors.primary} />
-                  <Text style={styles.documentName} numberOfLines={1}>{proofDocument.name}</Text>
-                </View>
-              ) : null}
-              <Button
-                mode="contained"
-                onPress={handlePickDocument}
-                style={styles.uploadButton}
-              >
-                {proofDocument ? t('change_document') : t('upload_document')}
-              </Button>
-            </View>
-          </View>
-        );
-      case 2:
-        return (
-          <View>
-            <Text style={styles.modalText}>
-              Veuillez entrer le code de confirmation qui vous a été envoyé par SMS pour valider votre paiement.
-            </Text>
-            <TextInput
-              label={t('sms_code')}
-              value={smsCode}
-              onChangeText={setSmsCode}
-              style={styles.codeInput}
-              keyboardType="numeric"
-              maxLength={6}
-            />
-            <Button
-              mode="contained"
-              onPress={handleVerifyCode}
-              style={styles.verifyButton}
-            >
-              {t('verify_code')}
-            </Button>
-          </View>
-        );
-    }
-  };
-
-  const handleCustomTokenChange = (text: string) => {
-    // Autoriser uniquement les chiffres
-    const numericText = text.replace(/[^0-9]/g, '');
-    setCustomTokens(numericText);
-  };
-
-  const plan = getSelectedPlan();
-  
   return (
     <View style={styles.container}>
-      <AppHeader title={t('buy_tokens')} showBack />
+      <AppHeader 
+        title={t('token_purchase')}
+        showBack
+      />
       
       <ScrollView style={styles.scrollView}>
+        {/* Plans de tokens */}
+        <Text style={styles.sectionTitle}>Sélectionnez un plan</Text>
+        <View style={styles.plansContainer}>
+          {tokenPlans.map((plan) => (
+            <Card
+              key={plan.id}
+              style={[
+                styles.planCard,
+                selectedPlan === plan.id && styles.selectedPlanCard
+              ]}
+              onPress={() => setSelectedPlan(plan.id)}
+            >
+              <Card.Content>
+                <Text style={styles.planLabel}>{plan.label}</Text>
+                <Text style={styles.planTokens}>{formatNumber(plan.tokens)} tokens</Text>
+                <CurrencyAmount 
+                  amount={plan.price} 
+                  style={styles.planPrice}
+                />
+              </Card.Content>
+            </Card>
+          ))}
+        </View>
+        
+        {/* Méthodes de paiement */}
+        <Text style={styles.sectionTitle}>Méthode de paiement</Text>
         <Card style={styles.card}>
           <Card.Content>
-            <Title style={styles.title}>{t('select_package')}</Title>
-            
-            <RadioButton.Group
-              onValueChange={value => {
-                setSelectedPlan(value);
-                if (value !== 'custom') {
-                  setCustomTokens('');
-                }
-              }}
-              value={selectedPlan}
-            >
-              {tokenPlans.map(plan => (
-                <View key={plan.id} style={styles.planOption}>
-                  <View style={styles.planRadio}>
-                    <RadioButton
-                      value={plan.id}
-                      color={theme.colors.primary}
-                    />
-                  </View>
-                  <View style={styles.planDetails}>
-                    <Text style={styles.planTitle}>
-                      {plan.label} {plan.id !== 'custom' && `(${formatNumber(plan.tokens)} tokens)`}
-                    </Text>
-                    {plan.id === 'custom' ? (
-                      <TextInput
-                        label={t('enter_token_amount')}
-                        value={customTokens}
-                        onChangeText={handleCustomTokenChange}
-                        keyboardType="numeric"
-                        mode="outlined"
-                        disabled={selectedPlan !== 'custom'}
-                        style={styles.customInput}
-                        placeholder="Ex: 1000000"
-                        theme={{ colors: { primary: theme.colors.primary } }}
-                      />
-                    ) : (
-                      <Text style={styles.planDescription}>
-                        {formatNumber(plan.price)} XOF ({(plan.price / plan.tokens * 1000000).toFixed(2)} XOF / million)
-                      </Text>
-                    )}
-                  </View>
-                  {plan.id !== 'custom' && (
-                    <View style={styles.planPrice}>
-                      <Text style={[styles.priceTag, { color: theme.colors.primary }]}>
-                        {formatNumber(plan.price)} XOF
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </RadioButton.Group>
-            
-            {selectedPlan === 'custom' && customTokens && (
-              <View style={styles.customPriceContainer}>
-                <Text style={styles.customPriceLabel}>
-                  {t('estimated_price')}:
-                </Text>
-                <Text style={[styles.customPrice, { color: theme.colors.primary }]}>
-                  {formatNumber(calculateCustomPrice(parseInt(customTokens, 10) || 0))} XOF
-                </Text>
+            <RadioButton.Group onValueChange={value => setPaymentMethod(value)} value={paymentMethod}>
+              <View style={styles.paymentOption}>
+                <RadioButton value="creditCard" />
+                <MaterialCommunityIcons name="credit-card" size={24} color="#555" style={styles.paymentIcon} />
+                <Text>{t('creditCard')}</Text>
               </View>
-            )}
+              
+              <View style={styles.paymentOption}>
+                <RadioButton value="bankTransfer" />
+                <MaterialCommunityIcons name="bank" size={24} color="#555" style={styles.paymentIcon} />
+                <Text>{t('bankTransfer')}</Text>
+              </View>
+
+              <View style={styles.paymentOption}>
+                <RadioButton value="manualPayment" />
+                <MaterialCommunityIcons name="file-document-outline" size={24} color="#555" style={styles.paymentIcon} />
+                <Text>{t('manualPayment')}</Text>
+              </View>
+            </RadioButton.Group>
           </Card.Content>
         </Card>
         
-        <Card style={styles.card}>
-          <Card.Content>
-            <Title style={styles.title}>{t('order_summary')}</Title>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t('tokens')}:</Text>
-              <Text style={styles.summaryValue}>{formatNumber(plan.tokens)}</Text>
-            </View>
-            
-            <Divider style={styles.divider} />
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t('price')}:</Text>
-              <Text style={styles.summaryValue}>{formatNumber(plan.price)} XOF</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t('tax')}:</Text>
-              <Text style={styles.summaryValue}>
-                {formatNumber(Math.round(plan.price * 0.18))} XOF (18%)
-              </Text>
-            </View>
-            
-            <Divider style={styles.divider} />
-            
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, styles.totalLabel]}>{t('total')}:</Text>
-              <Text style={[styles.summaryValue, styles.totalValue, { color: theme.colors.primary }]}>
-                {formatNumber(Math.round(plan.price * 1.18))} XOF
-              </Text>
-            </View>
-            
-            <Button
-              mode="contained"
-              style={[styles.purchaseButton, { backgroundColor: theme.colors.primary }]}
-              onPress={handleInitiatePurchase}
-              disabled={selectedPlan === 'custom' && (!customTokens || parseInt(customTokens, 10) <= 0)}
-            >
-              {t('proceed_to_payment')}
-            </Button>
-          </Card.Content>
-        </Card>
+        {/* Bouton d'achat */}
+        <Button
+          mode="contained"
+          onPress={handleInitiatePurchase}
+          style={styles.purchaseButton}
+        >
+          {t('purchase_tokens')}
+        </Button>
       </ScrollView>
 
+      {/* Modal de paiement standard */}
       <Portal>
         <Modal
           visible={paymentModalVisible}
-          onDismiss={handleClosePaymentModal}
+          onDismiss={() => setPaymentModalVisible(false)}
           contentContainerStyle={styles.modalContainer}
         >
-          <Title style={styles.modalTitle}>{t('select_payment_method')}</Title>
+          <Text style={styles.modalTitle}>{t('payment_details')}</Text>
           
+          <Text style={styles.modalText}>
+            Vous êtes sur le point d'acheter {formatNumber(getSelectedPlan().tokens)} tokens pour{' '}
+            <CurrencyAmount amount={getSelectedPlan().price} />
+          </Text>
+          
+          <Text style={styles.paymentMethodTitle}>Méthode de paiement sélectionnée:</Text>
           <RadioButton.Group onValueChange={value => setPaymentMethod(value)} value={paymentMethod}>
             <View style={styles.paymentOption}>
               <RadioButton value="creditCard" />
@@ -348,17 +225,11 @@ const TokenPurchaseScreen: React.FC = () => {
             </View>
             
             <View style={styles.paymentOption}>
-              <RadioButton value="mobilePayment" />
-              <MaterialCommunityIcons name="cellphone" size={24} color="#555" style={styles.paymentIcon} />
-              <Text>{t('mobilePayment')}</Text>
-            </View>
-            
-            <View style={styles.paymentOption}>
               <RadioButton value="bankTransfer" />
               <MaterialCommunityIcons name="bank" size={24} color="#555" style={styles.paymentIcon} />
               <Text>{t('bankTransfer')}</Text>
             </View>
-            
+
             <View style={styles.paymentOption}>
               <RadioButton value="manualPayment" />
               <MaterialCommunityIcons name="file-document-outline" size={24} color="#555" style={styles.paymentIcon} />
@@ -366,29 +237,33 @@ const TokenPurchaseScreen: React.FC = () => {
             </View>
           </RadioButton.Group>
           
-          <Divider style={styles.divider} />
-          
-          {paymentMethod === 'manualPayment' ? (
-            renderManualPaymentStep()
-          ) : (
-            <Button
-              mode="contained"
-              onPress={handleProcessPayment}
-              style={styles.payButton}
-            >
-              {t('proceed_to_payment')}
-            </Button>
-          )}
+          <Button
+            mode="contained"
+            onPress={handleProcessPayment}
+            style={styles.payButton}
+          >
+            {t('proceed_to_payment')}
+          </Button>
           
           <Button
             mode="text"
-            onPress={handleClosePaymentModal}
+            onPress={() => setPaymentModalVisible(false)}
             style={styles.cancelButton}
           >
             {t('cancel')}
           </Button>
         </Modal>
       </Portal>
+
+      {/* Modal de paiement manuel utilisant le composant réutilisable */}
+      <ManualPaymentModal
+        visible={manualPaymentModalVisible}
+        onDismiss={() => setManualPaymentModalVisible(false)}
+        onPaymentComplete={handleManualPaymentComplete}
+        title="Achat de Tokens - Paiement Manuel"
+        amount={getSelectedPlan()?.price || 0}
+        description={`Achat de ${formatNumber(getSelectedPlan()?.tokens || 0)} tokens`}
+      />
     </View>
   );
 };
@@ -401,90 +276,54 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  card: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
     margin: 16,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  title: {
-    marginBottom: 16,
-  },
-  planOption: {
+  plansContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
+    flexWrap: 'wrap',
+    paddingHorizontal: 8,
   },
-  planRadio: {
-    marginRight: 8,
+  planCard: {
+    width: '45%',
+    margin: 8,
   },
-  planDetails: {
-    flex: 1,
+  selectedPlanCard: {
+    borderColor: '#6200EE',
+    borderWidth: 2,
   },
-  planTitle: {
+  planLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 2,
   },
-  planDescription: {
+  planTokens: {
     fontSize: 14,
+    marginTop: 4,
     color: '#666',
   },
   planPrice: {
-    marginLeft: 8,
-  },
-  priceTag: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-  },
-  customInput: {
     marginTop: 8,
-    height: 40,
+    color: '#6200EE',
   },
-  customPriceContainer: {
+  card: {
+    margin: 16,
+    marginTop: 0,
+  },
+  paymentOption: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  customPriceLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  customPrice: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     paddingVertical: 8,
   },
-  summaryLabel: {
-    fontSize: 16,
-  },
-  summaryValue: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  totalLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  totalValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  divider: {
-    marginVertical: 8,
+  paymentIcon: {
+    marginHorizontal: 8,
   },
   purchaseButton: {
-    marginTop: 24,
-    borderRadius: 8,
-    paddingVertical: 6,
+    margin: 16,
   },
   modalContainer: {
     backgroundColor: 'white',
@@ -493,52 +332,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalTitle: {
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: 'bold',
     marginBottom: 20,
   },
-  paymentOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
+  modalText: {
+    marginBottom: 20,
   },
-  paymentIcon: {
-    marginHorizontal: 10,
+  paymentMethodTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
   },
   payButton: {
-    marginTop: 10,
+    marginTop: 20,
   },
   cancelButton: {
     marginTop: 10,
-  },
-  modalText: {
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  proofContainer: {
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  uploadButton: {
-    marginTop: 10,
-  },
-  documentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    borderRadius: 5,
-    width: '100%',
-  },
-  documentName: {
-    marginLeft: 10,
-    flex: 1,
-  },
-  codeInput: {
-    marginVertical: 10,
-  },
-  verifyButton: {
-    marginTop: 10,
-  },
+  }
 });
 
 export default TokenPurchaseScreen;

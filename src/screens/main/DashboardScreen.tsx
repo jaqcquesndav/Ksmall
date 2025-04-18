@@ -57,6 +57,13 @@ const DashboardScreen = () => {
   // Données des transactions récentes
   const [recentTransactions, setRecentTransactions] = useState([]);
   
+  // Informations sur l'abonnement (ajout de l'état manquant)
+  const [subscriptionInfo, setSubscriptionInfo] = useState({
+    plan: '',
+    expiryDate: new Date(),
+    features: []
+  });
+  
   useEffect(() => {
     // Charger les données du tableau de bord depuis le service centralisé
     loadDashboardData();

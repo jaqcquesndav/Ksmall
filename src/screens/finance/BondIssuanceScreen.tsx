@@ -16,11 +16,14 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
 import FinanceAccountingService from '../../services/FinanceAccountingService';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo';
+import CurrencyAmount from '../../components/common/CurrencyAmount';
+import { useCurrency } from '../../hooks/useCurrency';
 
-const BondIssuanceScreen = () => {
+const BondIssuanceScreen: React.FC = () => {
   const theme = useTheme();
   const navigation = useNavigation();
   const { companyInfo } = useCompanyInfo();
+  const { currencyInfo } = useCurrency();
 
   const [amount, setAmount] = useState('');
   const [term, setTerm] = useState('');
@@ -66,6 +69,20 @@ const BondIssuanceScreen = () => {
     }
     
     return rate.toFixed(1);
+  };
+
+  // Fonction pour obtenir les taux alternatifs de financement
+  const getAlternativeRate = (type: string): string => {
+    switch (type) {
+      case "banking":
+        return "5.2";
+      case "equity":
+        return "7.5";
+      case "leasing":
+        return "6.8";
+      default:
+        return "5.0";
+    }
   };
 
   // Mettre à jour les valeurs calculées lorsque les entrées changent
@@ -149,7 +166,7 @@ const BondIssuanceScreen = () => {
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>SIREN:</Text>
-              <Text style={styles.infoValue}>{companyInfo?.siren || '123456789'}</Text>
+              <Text style={styles.infoValue}>{companyInfo?.registrationNumber || '123456789'}</Text>
             </View>
             
             <View style={styles.infoRow}>
@@ -185,13 +202,13 @@ const BondIssuanceScreen = () => {
             </View>
             
             <TextInput
-              label="Montant de l'émission (€)"
+              label={`Montant de l'émission (${currencyInfo.symbol})`}
               value={amount}
               onChangeText={setAmount}
               keyboardType="numeric"
               style={styles.input}
               mode="outlined"
-              left={<TextInput.Icon icon="currency-eur" />}
+              left={<TextInput.Icon icon={currencyInfo.code === 'USD' ? "currency-usd" : "cash"} />}
             />
             
             <TextInput
@@ -261,6 +278,17 @@ const BondIssuanceScreen = () => {
                 <Text>Votre émission:</Text>
                 <Text style={{ fontWeight: 'bold', color: Colors.primary }}>{interestRate}%</Text>
               </View>
+              <View style={styles.comparisonRow}>
+                <Text>Coût de financement bancaire</Text>
+                <Text>{getAlternativeRate("banking")}%</Text>
+              </View>
+              <View style={styles.comparisonRow}>
+                <Text>Coût en intérêts sur 1 an</Text>
+                <CurrencyAmount 
+                  amount={(amount && interestRate) ? (parseInt(amount) * parseFloat(interestRate) / 100) : 0}
+                  style={{}}
+                />
+              </View>
             </View>
           </Card.Content>
         </Card>
@@ -271,12 +299,18 @@ const BondIssuanceScreen = () => {
             
             <View style={styles.accountingRow}>
               <Text style={styles.accountLabel}>Trésorerie (Débit):</Text>
-              <Text style={styles.accountValue}>+ {amount ? parseInt(amount).toLocaleString() : 0} €</Text>
+              <CurrencyAmount 
+                amount={amount ? parseInt(amount) : 0}
+                style={styles.accountValue}
+              />
             </View>
             
             <View style={styles.accountingRow}>
               <Text style={styles.accountLabel}>Emprunts obligataires (Crédit):</Text>
-              <Text style={styles.accountValue}>+ {amount ? parseInt(amount).toLocaleString() : 0} €</Text>
+              <CurrencyAmount 
+                amount={amount ? parseInt(amount) : 0}
+                style={styles.accountValue}
+              />
             </View>
             
             <View style={styles.warningBox}>
