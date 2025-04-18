@@ -3,9 +3,13 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, Title, Paragraph, Button, Avatar, Divider } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../components/common/AppHeader';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainStackParamList } from '../../navigation/types';
 
 const BusinessProfileScreen: React.FC = () => {
   const { t } = useTranslation();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   
   // Sample business data - in a real app, this would come from a database or API
   const businessData = {
@@ -25,6 +29,11 @@ const BusinessProfileScreen: React.FC = () => {
     foundedYear: 2020,
     employees: 12,
     logo: null // URL would go here in real implementation
+  };
+  
+  // Fonction pour naviguer vers l'écran d'édition
+  const handleEditProfile = () => {
+    navigation.navigate('BusinessProfileEdit'); // Nouvelle route à créer
   };
   
   return (
@@ -95,7 +104,7 @@ const BusinessProfileScreen: React.FC = () => {
         <Button 
           mode="contained" 
           style={styles.editButton}
-          onPress={() => console.log('Edit business profile')}
+          onPress={handleEditProfile}
         >
           {t('edit_profile')}
         </Button>

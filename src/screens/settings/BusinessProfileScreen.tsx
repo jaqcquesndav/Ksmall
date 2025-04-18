@@ -28,19 +28,30 @@ import logger from '../../utils/logger';
 import AppHeader from '../../components/common/AppHeader';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../navigation/types';
+import useOrientation from '../../hooks/useOrientation';
 
 type BusinessProfileScreenProps = NativeStackScreenProps<MainStackParamList, 'BusinessProfile'>;
 
 interface BusinessFormData {
   name: string;
   logo: string | null;
-  legalForm: string;
-  taxNumber: string; // NIF
-  idNat: string;
-  rccm: string;
-  patent: string;
+  
+  // Forme juridique
+  legalForm: string;         // 'ETs', 'SARLU', 'SARL', 'SAS', 'SA', 'SNC', 'SCS', 'GIE', 'OTHER'
+  
+  // Identifiants nationaux
+  taxNumber: string;         // NIF (Numéro d'Identification Fiscale)
+  idNat: string;             // ID National
+  rccm: string;              // RCCM (Registre du Commerce et du Crédit Mobilier)
+  cnssNumber: string;        // CNSS
+  inppNumber: string;        // INPP
+  patent: string;            // Numéro de Patente (pour les petites entreprises/commerce)
+  
+  // Informations générales
   employeeCount: number;
   creationDate: string;
+  
+  // Adresse
   address: {
     street: string;
     city: string;
@@ -48,9 +59,32 @@ interface BusinessFormData {
     country: string;
     coordinates: { latitude: number | null; longitude: number | null };
   };
+  
+  // Coordonnées géographiques multiples
+  locations: {
+    headquarters: { latitude: number | null; longitude: number | null; description: string };
+    salesPoints: Array<{ 
+      id: string;
+      name: string;
+      latitude: number | null; 
+      longitude: number | null; 
+      description: string 
+    }>;
+    productionSites: Array<{ 
+      id: string;
+      name: string;
+      latitude: number | null; 
+      longitude: number | null; 
+      description: string 
+    }>;
+  };
+  
+  // Contact
   phoneNumber: string;
   email: string;
   website: string;
+  
+  // Associés
   associates: {
     name: string;
     contribution: number;
@@ -63,6 +97,7 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
   const { t } = useTranslation();
   const theme = useTheme();
   const { user } = useAuth();
+  const { isLandscape, dimensions } = useOrientation();
   
   const [loading, setLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState<string>('info');
@@ -76,6 +111,8 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
     taxNumber: '',
     idNat: '',
     rccm: '',
+    cnssNumber: '',
+    inppNumber: '',
     patent: '',
     employeeCount: 1,
     creationDate: '',
@@ -85,6 +122,11 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
       postalCode: '',
       country: '',
       coordinates: { latitude: null, longitude: null }
+    },
+    locations: {
+      headquarters: { latitude: null, longitude: null, description: '' },
+      salesPoints: [],
+      productionSites: []
     },
     phoneNumber: '',
     email: '',
@@ -198,8 +240,8 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
   };
   
   const renderInfoTab = () => (
-    <View>
-      <View style={styles.logoContainer}>
+    <View style={styles.tabContent}>
+      <View style={[styles.logoContainer, isLandscape && styles.logoContainerLandscape]}>
         <TouchableOpacity onPress={pickLogo}>
           {formData.logo ? (
             <Avatar.Image size={120} source={{ uri: formData.logo }} />
@@ -260,10 +302,11 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
   const renderIdentificationTab = () => (
     <View>
       <TextInput
-        label={t('tax_number')} // NIF
-        value={formData.taxNumber}
-        onChangeText={(text) => setFormData({ ...formData, taxNumber: text })}
+        label={t('rccm')}
+        value={formData.rccm}
+        onChangeText={(text) => setFormData({ ...formData, rccm: text })}
         style={styles.input}
+        placeholder="Numéro de RCCM"
       />
       
       <TextInput
@@ -271,13 +314,31 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
         value={formData.idNat}
         onChangeText={(text) => setFormData({ ...formData, idNat: text })}
         style={styles.input}
+        placeholder="Numéro ID National"
       />
       
       <TextInput
-        label={t('rccm')}
-        value={formData.rccm}
-        onChangeText={(text) => setFormData({ ...formData, rccm: text })}
+        label={t('tax_number')} // NIF
+        value={formData.taxNumber}
+        onChangeText={(text) => setFormData({ ...formData, taxNumber: text })}
         style={styles.input}
+        placeholder="Numéro d'Impôt (NIF)"
+      />
+      
+      <TextInput
+        label={t('cnss_number')}
+        value={formData.cnssNumber}
+        onChangeText={(text) => setFormData({ ...formData, cnssNumber: text })}
+        style={styles.input}
+        placeholder="Numéro CNSS"
+      />
+      
+      <TextInput
+        label={t('inpp_number')}
+        value={formData.inppNumber}
+        onChangeText={(text) => setFormData({ ...formData, inppNumber: text })}
+        style={styles.input}
+        placeholder="Numéro INPP"
       />
       
       <TextInput
@@ -285,6 +346,7 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
         value={formData.patent}
         onChangeText={(text) => setFormData({ ...formData, patent: text })}
         style={styles.input}
+        placeholder="Numéro de Patente (pour TPE)"
       />
     </View>
   );
@@ -489,6 +551,259 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
     </View>
   );
 
+  const renderLocationsTab = () => (
+    <View>
+      <Text style={styles.sectionTitle}>{t('locations')}</Text>
+      
+      <Text style={styles.subSectionTitle}>{t('headquarters')}</Text>
+      <View style={styles.locationFields}>
+        <TextInput
+          label={t('description')}
+          value={formData.locations.headquarters.description}
+          onChangeText={(text) => {
+            setFormData({
+              ...formData,
+              locations: {
+                ...formData.locations,
+                headquarters: { ...formData.locations.headquarters, description: text }
+              }
+            });
+          }}
+          style={styles.input}
+        />
+        
+        <View style={styles.coordinatesContainer}>
+          <TextInput
+            label={t('latitude')}
+            value={formData.locations.headquarters.latitude?.toString() || ''}
+            onChangeText={(text) => {
+              const latitude = parseFloat(text) || null;
+              setFormData({
+                ...formData,
+                locations: {
+                  ...formData.locations,
+                  headquarters: { ...formData.locations.headquarters, latitude }
+                }
+              });
+            }}
+            style={[styles.input, styles.coordinateInput]}
+            keyboardType="numeric"
+            disabled={true}
+          />
+          <TextInput
+            label={t('longitude')}
+            value={formData.locations.headquarters.longitude?.toString() || ''}
+            onChangeText={(text) => {
+              const longitude = parseFloat(text) || null;
+              setFormData({
+                ...formData,
+                locations: {
+                  ...formData.locations,
+                  headquarters: { ...formData.locations.headquarters, longitude }
+                }
+              });
+            }}
+            style={[styles.input, styles.coordinateInput]}
+            keyboardType="numeric"
+            disabled={true}
+          />
+        </View>
+        
+        <Button
+          mode="outlined"
+          icon="map-marker"
+          onPress={() => navigation.navigate('MapSelector', {
+            initialLocation: formData.locations.headquarters.latitude && formData.locations.headquarters.longitude 
+              ? {
+                  latitude: formData.locations.headquarters.latitude,
+                  longitude: formData.locations.headquarters.longitude
+                }
+              : null,
+            onLocationSelected: (location) => {
+              setFormData({
+                ...formData,
+                locations: {
+                  ...formData.locations,
+                  headquarters: { 
+                    ...formData.locations.headquarters, 
+                    latitude: location.latitude,
+                    longitude: location.longitude
+                  }
+                }
+              });
+            },
+            title: t('select_headquarters_location')
+          })}
+          style={styles.locationButton}
+        >
+          {t('select_on_map')}
+        </Button>
+      </View>
+      
+      <Text style={styles.subSectionTitle}>{t('sales_points')}</Text>
+      {formData.locations.salesPoints.map((point, index) => (
+        <View key={`sales-point-${index}`} style={styles.locationContainer}>
+          <TextInput
+            label={t('name')}
+            value={point.name}
+            onChangeText={(text) => {
+              const newSalesPoints = [...formData.locations.salesPoints];
+              newSalesPoints[index].name = text;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, salesPoints: newSalesPoints }
+              });
+            }}
+            style={styles.input}
+          />
+          <TextInput
+            label={t('latitude')}
+            value={point.latitude?.toString() || ''}
+            onChangeText={(text) => {
+              const latitude = parseFloat(text) || null;
+              const newSalesPoints = [...formData.locations.salesPoints];
+              newSalesPoints[index].latitude = latitude;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, salesPoints: newSalesPoints }
+              });
+            }}
+            style={styles.input}
+            keyboardType="numeric"
+          />
+          <TextInput
+            label={t('longitude')}
+            value={point.longitude?.toString() || ''}
+            onChangeText={(text) => {
+              const longitude = parseFloat(text) || null;
+              const newSalesPoints = [...formData.locations.salesPoints];
+              newSalesPoints[index].longitude = longitude;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, salesPoints: newSalesPoints }
+              });
+            }}
+            style={styles.input}
+            keyboardType="numeric"
+          />
+          <TextInput
+            label={t('description')}
+            value={point.description}
+            onChangeText={(text) => {
+              const newSalesPoints = [...formData.locations.salesPoints];
+              newSalesPoints[index].description = text;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, salesPoints: newSalesPoints }
+              });
+            }}
+            style={styles.input}
+          />
+        </View>
+      ))}
+      <Button
+        mode="contained"
+        icon="plus"
+        onPress={() => {
+          setFormData({
+            ...formData,
+            locations: {
+              ...formData.locations,
+              salesPoints: [
+                ...formData.locations.salesPoints,
+                { id: Date.now().toString(), name: '', latitude: null, longitude: null, description: '' }
+              ]
+            }
+          });
+        }}
+        style={styles.addButton}
+      >
+        {t('add_sales_point')}
+      </Button>
+      
+      <Text style={styles.subSectionTitle}>{t('production_sites')}</Text>
+      {formData.locations.productionSites.map((site, index) => (
+        <View key={`production-site-${index}`} style={styles.locationContainer}>
+          <TextInput
+            label={t('name')}
+            value={site.name}
+            onChangeText={(text) => {
+              const newProductionSites = [...formData.locations.productionSites];
+              newProductionSites[index].name = text;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, productionSites: newProductionSites }
+              });
+            }}
+            style={styles.input}
+          />
+          <TextInput
+            label={t('latitude')}
+            value={site.latitude?.toString() || ''}
+            onChangeText={(text) => {
+              const latitude = parseFloat(text) || null;
+              const newProductionSites = [...formData.locations.productionSites];
+              newProductionSites[index].latitude = latitude;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, productionSites: newProductionSites }
+              });
+            }}
+            style={styles.input}
+            keyboardType="numeric"
+          />
+          <TextInput
+            label={t('longitude')}
+            value={site.longitude?.toString() || ''}
+            onChangeText={(text) => {
+              const longitude = parseFloat(text) || null;
+              const newProductionSites = [...formData.locations.productionSites];
+              newProductionSites[index].longitude = longitude;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, productionSites: newProductionSites }
+              });
+            }}
+            style={styles.input}
+            keyboardType="numeric"
+          />
+          <TextInput
+            label={t('description')}
+            value={site.description}
+            onChangeText={(text) => {
+              const newProductionSites = [...formData.locations.productionSites];
+              newProductionSites[index].description = text;
+              setFormData({
+                ...formData,
+                locations: { ...formData.locations, productionSites: newProductionSites }
+              });
+            }}
+            style={styles.input}
+          />
+        </View>
+      ))}
+      <Button
+        mode="contained"
+        icon="plus"
+        onPress={() => {
+          setFormData({
+            ...formData,
+            locations: {
+              ...formData.locations,
+              productionSites: [
+                ...formData.locations.productionSites,
+                { id: Date.now().toString(), name: '', latitude: null, longitude: null, description: '' }
+              ]
+            }
+          });
+        }}
+        style={styles.addButton}
+      >
+        {t('add_production_site')}
+      </Button>
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -506,15 +821,20 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
           { value: 'info', label: t('info') },
           { value: 'id', label: t('identification') },
           { value: 'contact', label: t('contact') },
+          { value: 'locations', label: t('locations') },
           { value: 'associates', label: t('associates') }
         ]}
-        style={styles.tabs}
+        style={[styles.tabs, isLandscape && styles.tabsLandscape]}
       />
       
-      <ScrollView style={styles.scrollContent}>
+      <ScrollView 
+        style={[styles.scrollContent, isLandscape && styles.scrollContentLandscape]}
+        contentContainerStyle={isLandscape && styles.contentContainerLandscape}
+      >
         {currentTab === 'info' && renderInfoTab()}
         {currentTab === 'id' && renderIdentificationTab()}
         {currentTab === 'contact' && renderContactTab()}
+        {currentTab === 'locations' && renderLocationsTab()}
         {currentTab === 'associates' && renderAssociatesTab()}
         
         <Button
@@ -565,6 +885,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
+  subSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 8,
+  },
   addButton: {
     marginVertical: 16,
   },
@@ -580,6 +906,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     padding: 0,
     backgroundColor: 'transparent',
+  },
+  locationContainer: {
+    marginBottom: 16,
+  },
+  locationFields: {
+    marginBottom: 16,
+  },
+  coordinatesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  coordinateInput: {
+    flex: 1,
+    marginRight: 8,
+  },
+  tabContent: {
+    flex: 1,
+  },
+  logoContainerLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 8,
+  },
+  tabsLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: 8,
+    marginVertical: 4,
+  },
+  scrollContentLandscape: {
+    flexDirection: 'row',
+    padding: 8,
+  },
+  contentContainerLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap', 
+  },
+  tabContentLandscape: {
+    width: '48%',
+  },
+  inputLandscape: {
+    width: '48%',
   },
 });
 

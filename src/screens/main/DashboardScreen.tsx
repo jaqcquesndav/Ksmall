@@ -11,8 +11,11 @@ import { fr } from 'date-fns/locale';
 import * as CompanyService from '../../services/CompanyService';
 import DashboardAccountingService from '../../services/DashboardAccountingService';
 import { CurrencyInfo } from '../../services/CurrencyService';
+import useOrientation from '../../hooks/useOrientation';
+import OrientationAwareView from '../../components/common/OrientationAwareView';
+import AdaptiveGrid from '../../components/common/AdaptiveGrid';
 
-// Import des nouveaux composants et données
+// Import des composants et données
 import SubscriptionStatusWidget from '../../components/dashboard/SubscriptionStatusWidget';
 import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
 import QuickFinanceActionsButton from '../../components/dashboard/QuickFinanceActionsButton';
@@ -20,6 +23,7 @@ import QuickFinanceActionsButton from '../../components/dashboard/QuickFinanceAc
 const DashboardScreen = () => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { isLandscape, dimensions } = useOrientation();
   
   // États pour les sections togglables
   const [showCreditScore, setShowCreditScore] = useState(true);
@@ -133,190 +137,383 @@ const DashboardScreen = () => {
     }).format(value);
   };
 
-  // Le reste du composant DashboardScreen reste inchangé...
   return (
-    <View style={styles.container}>
+    <OrientationAwareView
+      style={styles.container}
+      landscapeStyle={styles.containerLandscape}
+    >
       <AppHeader title={t('dashboard')} />
       
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          {/* Carte de résumé financier */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <View style={styles.cardHeader}>
-                <Title>{t('financial_summary')}</Title>
-                <View style={styles.actionButtonsContainer}>
-                  <QuickFinanceActionsButton />
-                  <IconButton 
-                    icon="refresh" 
-                    size={20} 
-                    onPress={() => loadDashboardData()} 
-                  />
-                </View>
-              </View>
-              
-              {/* Section Cote de Crédit et ESG - Togglable */}
-              <Card style={[styles.innerCard, !showCreditScore && styles.collapsedCard]}>
-                <Card.Content>
-                  <TouchableOpacity 
-                    onPress={() => setShowCreditScore(!showCreditScore)}
-                    style={styles.cardHeader}
-                  >
-                    <Title style={styles.innerCardTitle}>{t('credit_score_and_ratings')}</Title>
-                    <View style={styles.actionButtons}>
-                      <IconButton 
-                        icon="information-outline" 
-                        size={20} 
-                        onPress={() => setCreditInfoVisible(true)} 
-                      />
-                      <IconButton 
-                        icon={showCreditScore ? "chevron-up" : "chevron-down"} 
-                        size={20} 
-                        onPress={() => setShowCreditScore(!showCreditScore)} 
-                      />
-                    </View>
-                  </TouchableOpacity>
-                  
-                  {showCreditScore && (
-                    <View style={styles.ratingsContainer}>
-                      <View style={styles.ratingItem}>
-                        <View>
-                          <Text style={styles.ratingLabel}>{t('credit_score')}</Text>
-                          <Text style={[styles.scoreValue, { color: getCreditScoreColor(creditScore) }]}>
-                            {creditScore}/100
-                          </Text>
-                        </View>
-                        <View style={[styles.scoreIndicator, { backgroundColor: getCreditScoreColor(creditScore) }]} />
-                      </View>
-                      
-                      <View style={styles.ratingDivider} />
-                      
-                      <View style={styles.ratingItem}>
-                        <View>
-                          <View style={styles.ratingLabelContainer}>
-                            <Text style={styles.ratingLabel}>{t('esg_rating')}</Text>
-                            <IconButton 
-                              icon="information-outline" 
-                              size={16} 
-                              onPress={() => setEsgInfoVisible(true)} 
-                              style={styles.infoButton}
-                            />
-                          </View>
-                          <Text style={[styles.scoreValue, { color: getESGRatingColor(esgRating) }]}>
-                            {esgRating}
-                          </Text>
-                        </View>
-                        <View style={[styles.scoreIndicator, { backgroundColor: getESGRatingColor(esgRating) }]} />
-                      </View>
-                    </View>
-                  )}
-                </Card.Content>
-              </Card>
-              
-              {/* Section Soldes - Togglable */}
-              <Card style={[styles.innerCard, !showBalances && styles.collapsedCard]}>
-                <Card.Content>
-                  <TouchableOpacity 
-                    onPress={() => setShowBalances(!showBalances)}
-                    style={styles.cardHeader}
-                  >
-                    <Title style={styles.innerCardTitle}>{t('balances')}</Title>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.content,
+          isLandscape && styles.contentLandscape
+        ]}
+      >
+        {isLandscape ? (
+          // Disposition en mode paysage - Utilisation de la grille adaptive
+          <AdaptiveGrid
+            portraitColumns={1}
+            landscapeColumns={2}
+            spacing={12}
+          >
+            {/* Carte de résumé financier */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <View style={styles.cardHeader}>
+                  <Title>{t('financial_summary')}</Title>
+                  <View style={styles.actionButtonsContainer}>
+                    <QuickFinanceActionsButton />
                     <IconButton 
-                      icon={showBalances ? "chevron-up" : "chevron-down"} 
+                      icon="refresh" 
                       size={20} 
-                      onPress={() => setShowBalances(!showBalances)} 
+                      onPress={() => loadDashboardData()} 
                     />
-                  </TouchableOpacity>
-                  
-                  {showBalances && (
-                    <View style={styles.balancesContainer}>
-                      <View style={styles.balanceRow}>
-                        <Text style={styles.balanceLabel}>{t('cash')}</Text>
-                        <Text style={styles.balanceValue}>
-                          {formatCurrency(accountBalances.cash)}
-                        </Text>
-                      </View>
-                      <View style={styles.balanceRow}>
-                        <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
-                        <Text style={styles.balanceValue}>
-                          {formatCurrency(accountBalances.receivables)}
-                        </Text>
-                      </View>
-                      <View style={styles.balanceRow}>
-                        <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
-                        <Text style={styles.balanceValue}>
-                          {formatCurrency(accountBalances.payables)}
-                        </Text>
-                      </View>
-                      <View style={[styles.balanceRow, styles.totalRow]}>
-                        <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
-                        <Text style={[
-                          styles.balanceValueTotal,
-                          {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
-                        ]}>
-                          {formatCurrency(financialMetrics.netIncome)}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </Card.Content>
-              </Card>
-            </Card.Content>
-          </Card>
-          
-          {/* Widget Statut de l'Abonnement avec Tokens */}
-          <SubscriptionStatusWidget 
-            collapsed={!showSubscription} 
-            onToggleCollapse={() => setShowSubscription(!showSubscription)} 
-          />
-          
-          {/* Widget des transactions récentes */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <TouchableOpacity 
-                onPress={() => setShowTransactions(!showTransactions)}
-                style={styles.cardHeader}
-              >
-                <Title>{t('recent_transactions')}</Title>
-                <IconButton 
-                  icon={showTransactions ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  onPress={() => setShowTransactions(!showTransactions)} 
-                />
-              </TouchableOpacity>
-              
-              {showTransactions && (
-                <RecentTransactionsWidget transactions={recentTransactions} />
-              )}
-            </Card.Content>
-          </Card>
-          
-          {/* Section Activités Récentes - Togglable */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <TouchableOpacity 
-                onPress={() => setShowActivities(!showActivities)}
-                style={styles.cardHeader}
-              >
-                <Title>{t('recent_activities')}</Title>
-                <IconButton 
-                  icon={showActivities ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  onPress={() => setShowActivities(!showActivities)} 
-                />
-              </TouchableOpacity>
-              
-              {showActivities && (
-                <View style={styles.activitiesContainer}>
-                  {/* Contenu des activités récentes */}
+                  </View>
                 </View>
-              )}
-            </Card.Content>
-          </Card>
-        </View>
+                
+                {/* Section Cote de Crédit et ESG - Togglable */}
+                <Card style={[styles.innerCard, !showCreditScore && styles.collapsedCard]}>
+                  <Card.Content>
+                    <TouchableOpacity 
+                      onPress={() => setShowCreditScore(!showCreditScore)}
+                      style={styles.cardHeader}
+                    >
+                      <Title style={styles.innerCardTitle}>{t('credit_score_and_ratings')}</Title>
+                      <View style={styles.actionButtons}>
+                        <IconButton 
+                          icon="information-outline" 
+                          size={20} 
+                          onPress={() => setCreditInfoVisible(true)} 
+                        />
+                        <IconButton 
+                          icon={showCreditScore ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          onPress={() => setShowCreditScore(!showCreditScore)} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {showCreditScore && (
+                      <View style={styles.ratingsContainer}>
+                        <View style={styles.ratingItem}>
+                          <View>
+                            <Text style={styles.ratingLabel}>{t('credit_score')}</Text>
+                            <Text style={[styles.scoreValue, { color: getCreditScoreColor(creditScore) }]}>
+                              {creditScore}/100
+                            </Text>
+                          </View>
+                          <View style={[styles.scoreIndicator, { backgroundColor: getCreditScoreColor(creditScore) }]} />
+                        </View>
+                        
+                        <View style={styles.ratingDivider} />
+                        
+                        <View style={styles.ratingItem}>
+                          <View>
+                            <View style={styles.ratingLabelContainer}>
+                              <Text style={styles.ratingLabel}>{t('esg_rating')}</Text>
+                              <IconButton 
+                                icon="information-outline" 
+                                size={16} 
+                                onPress={() => setEsgInfoVisible(true)} 
+                                style={styles.infoButton}
+                              />
+                            </View>
+                            <Text style={[styles.scoreValue, { color: getESGRatingColor(esgRating) }]}>
+                              {esgRating}
+                            </Text>
+                          </View>
+                          <View style={[styles.scoreIndicator, { backgroundColor: getESGRatingColor(esgRating) }]} />
+                        </View>
+                      </View>
+                    )}
+                  </Card.Content>
+                </Card>
+                
+                {/* Section Soldes - Togglable */}
+                <Card style={[styles.innerCard, !showBalances && styles.collapsedCard]}>
+                  <Card.Content>
+                    <TouchableOpacity 
+                      onPress={() => setShowBalances(!showBalances)}
+                      style={styles.cardHeader}
+                    >
+                      <Title style={styles.innerCardTitle}>{t('balances')}</Title>
+                      <IconButton 
+                        icon={showBalances ? "chevron-up" : "chevron-down"} 
+                        size={20} 
+                        onPress={() => setShowBalances(!showBalances)} 
+                      />
+                    </TouchableOpacity>
+                    
+                    {showBalances && (
+                      <View style={styles.balancesContainer}>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('cash')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.cash)}
+                          </Text>
+                        </View>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.receivables)}
+                          </Text>
+                        </View>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.payables)}
+                          </Text>
+                        </View>
+                        <View style={[styles.balanceRow, styles.totalRow]}>
+                          <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
+                          <Text style={[
+                            styles.balanceValueTotal,
+                            {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
+                          ]}>
+                            {formatCurrency(financialMetrics.netIncome)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </Card.Content>
+                </Card>
+              </Card.Content>
+            </Card>
+            
+            {/* Widget Statut de l'Abonnement avec Tokens */}
+            <SubscriptionStatusWidget 
+              collapsed={!showSubscription} 
+              onToggleCollapse={() => setShowSubscription(!showSubscription)} 
+              isLandscape={isLandscape}
+            />
+            
+            {/* Widget des transactions récentes */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <TouchableOpacity 
+                  onPress={() => setShowTransactions(!showTransactions)}
+                  style={styles.cardHeader}
+                >
+                  <Title>{t('recent_transactions')}</Title>
+                  <IconButton 
+                    icon={showTransactions ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    onPress={() => setShowTransactions(!showTransactions)} 
+                  />
+                </TouchableOpacity>
+                
+                {showTransactions && (
+                  <RecentTransactionsWidget transactions={recentTransactions} />
+                )}
+              </Card.Content>
+            </Card>
+            
+            {/* Section Activités Récentes - Togglable */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <TouchableOpacity 
+                  onPress={() => setShowActivities(!showActivities)}
+                  style={styles.cardHeader}
+                >
+                  <Title>{t('recent_activities')}</Title>
+                  <IconButton 
+                    icon={showActivities ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    onPress={() => setShowActivities(!showActivities)} 
+                  />
+                </TouchableOpacity>
+                
+                {showActivities && (
+                  <View style={styles.activitiesContainer}>
+                    {/* Contenu des activités récentes */}
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          </AdaptiveGrid>
+        ) : (
+          // Disposition en mode portrait - Structure originale
+          <View>
+            {/* Carte de résumé financier */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <View style={styles.cardHeader}>
+                  <Title>{t('financial_summary')}</Title>
+                  <View style={styles.actionButtonsContainer}>
+                    <QuickFinanceActionsButton />
+                    <IconButton 
+                      icon="refresh" 
+                      size={20} 
+                      onPress={() => loadDashboardData()} 
+                    />
+                  </View>
+                </View>
+                
+                {/* Section Cote de Crédit et ESG - Togglable */}
+                <Card style={[styles.innerCard, !showCreditScore && styles.collapsedCard]}>
+                  <Card.Content>
+                    <TouchableOpacity 
+                      onPress={() => setShowCreditScore(!showCreditScore)}
+                      style={styles.cardHeader}
+                    >
+                      <Title style={styles.innerCardTitle}>{t('credit_score_and_ratings')}</Title>
+                      <View style={styles.actionButtons}>
+                        <IconButton 
+                          icon="information-outline" 
+                          size={20} 
+                          onPress={() => setCreditInfoVisible(true)} 
+                        />
+                        <IconButton 
+                          icon={showCreditScore ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          onPress={() => setShowCreditScore(!showCreditScore)} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {showCreditScore && (
+                      <View style={styles.ratingsContainer}>
+                        <View style={styles.ratingItem}>
+                          <View>
+                            <Text style={styles.ratingLabel}>{t('credit_score')}</Text>
+                            <Text style={[styles.scoreValue, { color: getCreditScoreColor(creditScore) }]}>
+                              {creditScore}/100
+                            </Text>
+                          </View>
+                          <View style={[styles.scoreIndicator, { backgroundColor: getCreditScoreColor(creditScore) }]} />
+                        </View>
+                        
+                        <View style={styles.ratingDivider} />
+                        
+                        <View style={styles.ratingItem}>
+                          <View>
+                            <View style={styles.ratingLabelContainer}>
+                              <Text style={styles.ratingLabel}>{t('esg_rating')}</Text>
+                              <IconButton 
+                                icon="information-outline" 
+                                size={16} 
+                                onPress={() => setEsgInfoVisible(true)} 
+                                style={styles.infoButton}
+                              />
+                            </View>
+                            <Text style={[styles.scoreValue, { color: getESGRatingColor(esgRating) }]}>
+                              {esgRating}
+                            </Text>
+                          </View>
+                          <View style={[styles.scoreIndicator, { backgroundColor: getESGRatingColor(esgRating) }]} />
+                        </View>
+                      </View>
+                    )}
+                  </Card.Content>
+                </Card>
+                
+                {/* Section Soldes - Togglable */}
+                <Card style={[styles.innerCard, !showBalances && styles.collapsedCard]}>
+                  <Card.Content>
+                    <TouchableOpacity 
+                      onPress={() => setShowBalances(!showBalances)}
+                      style={styles.cardHeader}
+                    >
+                      <Title style={styles.innerCardTitle}>{t('balances')}</Title>
+                      <IconButton 
+                        icon={showBalances ? "chevron-up" : "chevron-down"} 
+                        size={20} 
+                        onPress={() => setShowBalances(!showBalances)} 
+                      />
+                    </TouchableOpacity>
+                    
+                    {showBalances && (
+                      <View style={styles.balancesContainer}>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('cash')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.cash)}
+                          </Text>
+                        </View>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.receivables)}
+                          </Text>
+                        </View>
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
+                          <Text style={styles.balanceValue}>
+                            {formatCurrency(accountBalances.payables)}
+                          </Text>
+                        </View>
+                        <View style={[styles.balanceRow, styles.totalRow]}>
+                          <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
+                          <Text style={[
+                            styles.balanceValueTotal,
+                            {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
+                          ]}>
+                            {formatCurrency(financialMetrics.netIncome)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </Card.Content>
+                </Card>
+              </Card.Content>
+            </Card>
+            
+            {/* Widget Statut de l'Abonnement avec Tokens */}
+            <SubscriptionStatusWidget 
+              collapsed={!showSubscription} 
+              onToggleCollapse={() => setShowSubscription(!showSubscription)} 
+            />
+            
+            {/* Widget des transactions récentes */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <TouchableOpacity 
+                  onPress={() => setShowTransactions(!showTransactions)}
+                  style={styles.cardHeader}
+                >
+                  <Title>{t('recent_transactions')}</Title>
+                  <IconButton 
+                    icon={showTransactions ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    onPress={() => setShowTransactions(!showTransactions)} 
+                  />
+                </TouchableOpacity>
+                
+                {showTransactions && (
+                  <RecentTransactionsWidget transactions={recentTransactions} />
+                )}
+              </Card.Content>
+            </Card>
+            
+            {/* Section Activités Récentes - Togglable */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <TouchableOpacity 
+                  onPress={() => setShowActivities(!showActivities)}
+                  style={styles.cardHeader}
+                >
+                  <Title>{t('recent_activities')}</Title>
+                  <IconButton 
+                    icon={showActivities ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    onPress={() => setShowActivities(!showActivities)} 
+                  />
+                </TouchableOpacity>
+                
+                {showActivities && (
+                  <View style={styles.activitiesContainer}>
+                    {/* Contenu des activités récentes */}
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          </View>
+        )}
       </ScrollView>
       
-      {/* Dialogue d'information sur la cote de crédit */}
+      {/* Dialogues d'information - aucun changement nécessaire ici */}
       <Portal>
         <Dialog 
           visible={creditInfoVisible} 
@@ -449,10 +646,11 @@ const DashboardScreen = () => {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-    </View>
+    </OrientationAwareView>
   );
 };
 
+// Styles existants
 const existingStyles = StyleSheet.create({
   container: {
     flex: 1,
@@ -613,6 +811,7 @@ const existingStyles = StyleSheet.create({
   },
 });
 
+// Styles additionnels
 const additionalStyles = StyleSheet.create({
   transactionsContainer: {
     marginTop: 8,
@@ -643,9 +842,29 @@ const additionalStyles = StyleSheet.create({
   }
 });
 
+// Nouveaux styles pour l'adaptation à l'orientation
+const orientationStyles = StyleSheet.create({
+  containerLandscape: {
+    backgroundColor: '#f5f5f5',
+  },
+  contentLandscape: {
+    padding: 12, // Légèrement réduit en mode paysage
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  cardLandscape: {
+    flex: 1,
+    marginHorizontal: 6,
+    marginBottom: 12,
+    minWidth: '48%', // Pour garantir un affichage sur deux colonnes
+  },
+});
+
 const styles = StyleSheet.create({
   ...existingStyles,
   ...additionalStyles,
+  ...orientationStyles,
 });
 
 export default DashboardScreen;

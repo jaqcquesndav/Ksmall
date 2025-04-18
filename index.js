@@ -1,9 +1,13 @@
-import { registerRootComponent } from 'expo';
+import 'react-native-gesture-handler';
+import React from 'react';
 import { AppRegistry } from 'react-native';
 import App from './App';
 
-// Register the app for React Native
-AppRegistry.registerComponent('main', () => App);
+// Get name directly to avoid potential circular dependencies
+const appName = require('./app.json').name;
 
-// Register for Expo
-registerRootComponent(App);
+// Register the app with both names
+AppRegistry.registerComponent('main', () => App);
+AppRegistry.registerComponent(appName, () => App);
+
+export default App;

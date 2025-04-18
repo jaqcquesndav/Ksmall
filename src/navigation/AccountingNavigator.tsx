@@ -12,7 +12,6 @@ import AccountDetailsScreen from '../screens/accounting/AccountDetailsScreen';
 import AddJournalEntryScreen from '../screens/accounting/AddJournalEntryScreen';
 import JournalEntryDetailsScreen from '../screens/accounting/JournalEntryDetailsScreen';
 import TransactionDetailsScreen from '../screens/accounting/TransactionDetailsScreen';
-import AccountingScreen from '../screens/accounting/AccountingScreen';
 
 // Imports des écrans de paramètres comptables
 import AccountingSettingsScreen from '../screens/settings/AccountingSettingsScreen';
@@ -40,7 +39,7 @@ const AccountingNavigator = () => {
         component={AccountingDashboardScreen} 
         options={{ animationEnabled: true }}
       />
-      <Stack.Screen name="AccountingMain" component={AccountingScreen} />
+     
       <Stack.Screen name="JournalEntry" component={JournalEntryScreen} />
       <Stack.Screen name="JournalEntryDetails" component={JournalEntryDetailsScreen} />
       <Stack.Screen name="AddJournalEntry" component={AddJournalEntryScreen} />
