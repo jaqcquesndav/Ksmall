@@ -93,6 +93,12 @@ class DatabaseService {
         await this.loadDemoData(db);
       }
       
+      // Always initialize accounting tables and data, regardless of whether the
+      // main database was just initialized or not
+      await this.initAccountingTables();
+      await this.initAccountingAccountsTable();
+      await this.updateTransactionsWithTotal();
+      
       logger.info(`Database initialized successfully`);
     } catch (error) {
       logger.error(`Database initialization error`, error);
@@ -1175,6 +1181,90 @@ class DatabaseService {
       logger.info(`Created ${incomeSchedule.length} investment income schedule entries`);
     } catch (error) {
       logger.error('Error creating investment income schedule:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates and populates the accounting_accounts table with sample chart of accounts data
+   * This is needed for SQL queries that retrieve financial metrics
+   */
+  async initAccountingAccountsTable(): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Check if table exists
+      const [tableCheck] = await this.executeQuery(
+        db,
+        'SELECT name FROM sqlite_master WHERE type="table" AND name="accounting_accounts"',
+        []
+      );
+      
+      // Create table if it doesn't exist
+      if (!tableCheck || tableCheck.rows.length === 0) {
+        logger.info("Creating accounting_accounts table");
+        await this.executeQuery(
+          db,
+          `CREATE TABLE IF NOT EXISTS accounting_accounts (
+            id TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            balance REAL DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT
+          )`,
+          []
+        );
+        
+        // Insert sample accounts based on SYSCOHADA chart of accounts
+        const now = new Date().toISOString();
+        const accounts = [
+          // Asset accounts
+          { id: 'acc1', code: '52100000', name: 'Banque SGBCI', type: 'asset', balance: 3750000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc2', code: '52200000', name: 'Banque Ecobank', type: 'asset', balance: 2250000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc3', code: '41100000', name: 'Clients - catégorie A', type: 'asset', balance: 1850000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc4', code: '41200000', name: 'Clients - catégorie B', type: 'asset', balance: 1250000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc5', code: '24100000', name: 'Matériel informatique', type: 'asset', balance: 4500000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc6', code: '24500000', name: 'Matériel de transport', type: 'asset', balance: 7500000, is_active: 1, created_at: now, updated_at: now },
+          
+          // Liability accounts
+          { id: 'acc7', code: '40100000', name: 'Fournisseurs - catégorie A', type: 'liability', balance: 1250000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc8', code: '40200000', name: 'Fournisseurs - catégorie B', type: 'liability', balance: 750000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc9', code: '42100000', name: 'Personnel - salaires à payer', type: 'liability', balance: 2200000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc10', code: '44100000', name: 'État - impôts à payer', type: 'liability', balance: 850000, is_active: 1, created_at: now, updated_at: now },
+          
+          // Revenue accounts
+          { id: 'acc11', code: '70100000', name: 'Ventes de produits', type: 'revenue', balance: 12500000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc12', code: '70600000', name: 'Prestations de services', type: 'revenue', balance: 8750000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc13', code: '71100000', name: 'Variation des stocks', type: 'revenue', balance: 1500000, is_active: 1, created_at: now, updated_at: now },
+          
+          // Expense accounts
+          { id: 'acc14', code: '60100000', name: 'Achats de marchandises', type: 'expense', balance: 6250000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc15', code: '61300000', name: 'Locations et charges locatives', type: 'expense', balance: 3600000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc16', code: '62600000', name: 'Frais postaux et télécommunications', type: 'expense', balance: 1250000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc17', code: '63100000', name: 'Rémunérations du personnel', type: 'expense', balance: 7500000, is_active: 1, created_at: now, updated_at: now },
+          { id: 'acc18', code: '66000000', name: 'Charges financières', type: 'expense', balance: 850000, is_active: 1, created_at: now, updated_at: now }
+        ];
+        
+        // Insert accounts using a transaction for better performance
+        await db.transaction(tx => {
+          for (const account of accounts) {
+            tx.executeSql(
+              `INSERT INTO accounting_accounts (id, code, name, type, balance, is_active, created_at, updated_at) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [account.id, account.code, account.name, account.type, account.balance, account.is_active, account.created_at, account.updated_at]
+            );
+          }
+        });
+        
+        logger.info(`Successfully populated accounting_accounts table with ${accounts.length} accounts`);
+      } else {
+        logger.debug("accounting_accounts table already exists");
+      }
+    } catch (error) {
+      logger.error('Error initializing accounting_accounts table:', error);
       throw error;
     }
   }

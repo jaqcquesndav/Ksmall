@@ -1,6 +1,10 @@
-pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
-plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+// Import Expo-specific settings
+apply from: new File(["node", "--print", "require.resolve('@expo/metro-config/package.json')"].execute(null, rootDir).text.trim(), "../build/android-settings.gradle");
+
+// Original project settings
 rootProject.name = 'ksmall'
 include ':app'
-includeBuild('../node_modules/@react-native/gradle-plugin')
+
+// Additional repositories for React Native dependencies
+apply from: new File(["node", "--print", "require.resolve('expo/package.json')"].execute(null, rootDir).text.trim(), "../scripts/autolinking.gradle");
+apply from: new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), "../react.gradle");

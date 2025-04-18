@@ -1,67 +1,46 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useTranslation } from 'react-i18next';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { StyleSheet, View } from 'react-native';
+import { createStackNavigator } from '@react-navigation/stack';
+import MainStack from './MainStack';
+import useOrientation from '../hooks/useOrientation';
 
-import ChatScreen from '../screens/main/ChatScreen';
-import DashboardScreen from '../screens/main/DashboardScreen';
-import SettingsScreen from '../screens/settings/SettingsScreen';
-import AccountingNavigator from './AccountingNavigator';
-
-const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
 
 const MainNavigator: React.FC = () => {
-  const { t } = useTranslation();
+  const { isLandscape } = useOrientation();
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: '#6200ee',
-      }}
-    >
-      <Tab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        options={{
-          tabBarLabel: t('dashboard'),
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="view-dashboard" color={color} size={size} />
-          ),
+    <View style={[
+      styles.container,
+      isLandscape && styles.containerLandscape
+    ]}>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          cardStyle: isLandscape ? styles.cardLandscape : styles.card
         }}
-      />
-      <Tab.Screen
-        name="Chat"
-        component={ChatScreen}
-        options={{
-          tabBarLabel: t('assistant'),
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="chat" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Accounting"
-        component={AccountingNavigator}
-        options={{
-          tabBarLabel: t('accounting'),
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="calculator-variant" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{
-          tabBarLabel: t('settings'),
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="cog" color={color} size={size} />
-          ),
-        }}
-      />
-    </Tab.Navigator>
+      >
+        <Stack.Screen name="MainStack" component={MainStack} />
+      </Stack.Navigator>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  containerLandscape: {
+    // Ajustements spécifiques au mode paysage si nécessaire
+  },
+  card: {
+    backgroundColor: '#f5f5f5',
+  },
+  cardLandscape: {
+    backgroundColor: '#f5f5f5',
+    // Possibilité d'ajuster les transitions et animations en mode paysage
+  },
+});
 
 export default MainNavigator;

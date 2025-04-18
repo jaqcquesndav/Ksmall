@@ -1,46 +1,51 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useTranslation } from 'react-i18next';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MainTabsParamList } from './types';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from 'react-native-paper';
-
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ChatScreen from '../screens/main/ChatScreen';
+import AccountingScreen from '../screens/main/AccountingScreen';
 import InventoryScreen from '../screens/main/InventoryScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
-import AccountingNavigator from './AccountingNavigator';
+import useOrientation from '../hooks/useOrientation';
+import { View, StyleSheet } from 'react-native';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
 const TabNavigator: React.FC = () => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { isLandscape } = useOrientation();
 
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#999',
         headerShown: false,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.outline,
         tabBarStyle: {
-          borderTopWidth: 1,
-          borderTopColor: '#e0e0e0',
-          elevation: 8,
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 }
-        }
+          height: isLandscape ? 60 : 70,
+          paddingBottom: isLandscape ? 5 : 10,
+          paddingTop: 5,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
+        },
       }}
     >
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{
-          tabBarLabel: t('dashboard'),
+          title: t('dashboard'),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="view-dashboard" color={color} size={size} />
+            <Icon name="view-dashboard-outline" size={size} color={color} />
           ),
         }}
       />
@@ -48,19 +53,19 @@ const TabNavigator: React.FC = () => {
         name="Chat"
         component={ChatScreen}
         options={{
-          tabBarLabel: t('chat'),
+          title: t('chat'),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="chat" color={color} size={size} />
+            <Icon name="chat-outline" size={size} color={color} />
           ),
         }}
       />
       <Tab.Screen
         name="Accounting"
-        component={AccountingNavigator}
+        component={AccountingScreen}
         options={{
-          tabBarLabel: t('accounting'),
+          title: t('accounting'),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="calculator" color={color} size={size} />
+            <Icon name="calculator-variant-outline" size={size} color={color} />
           ),
         }}
       />
@@ -68,9 +73,9 @@ const TabNavigator: React.FC = () => {
         name="Inventory"
         component={InventoryScreen}
         options={{
-          tabBarLabel: t('inventory'),
+          title: t('inventory'),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="package-variant" color={color} size={size} />
+            <Icon name="package-variant-closed" size={size} color={color} />
           ),
         }}
       />
@@ -78,9 +83,9 @@ const TabNavigator: React.FC = () => {
         name="Settings"
         component={SettingsScreen}
         options={{
-          tabBarLabel: t('settings'),
+          title: t('settings'),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="cog" color={color} size={size} />
+            <Icon name="cog-outline" size={size} color={color} />
           ),
         }}
       />

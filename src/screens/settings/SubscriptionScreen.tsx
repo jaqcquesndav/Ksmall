@@ -79,8 +79,8 @@ const SubscriptionScreen: React.FC = () => {
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled === false) {
-        setProofDocument(result.assets[0]);
+      if (result.type !== "cancel") {
+        setProofDocument(result);
         setManualPaymentStep(2);
         Alert.alert(
           'Justificatif reçu',

@@ -62,6 +62,7 @@ export type MainStackParamList = {
   Notifications: undefined;
   UserProfile: undefined;
   BusinessProfile: undefined;
+  BusinessProfileEdit: undefined;
   Settings: undefined;
   Chat: { conversationId?: string; newConversation?: boolean };
   
@@ -93,6 +94,13 @@ export type MainStackParamList = {
   TransactionDetails: { transactionId: string };
   AddProduct: { productId?: string; categoryId?: string };
   StockAdjustment: { productId: string };
+  
+  // Map selector for business locations
+  MapSelector: { 
+    initialLocation?: { latitude: number; longitude: number } | null;
+    onLocationSelected: (location: { latitude: number; longitude: number }) => void;
+    title?: string;
+  };
   
   // Finance screens
   FinanceRequest: { 

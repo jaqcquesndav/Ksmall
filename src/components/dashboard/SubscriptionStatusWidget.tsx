@@ -13,11 +13,13 @@ import { formatNumber } from '../../utils/formatters';
 interface SubscriptionStatusWidgetProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  isLandscape?: boolean;
 }
 
 const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
   collapsed = false,
-  onToggleCollapse = () => {}
+  onToggleCollapse = () => {},
+  isLandscape = false
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();

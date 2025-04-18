@@ -3,7 +3,7 @@
     "name": "KSMall",
     "slug": "ksmall",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"

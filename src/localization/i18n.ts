@@ -179,7 +179,33 @@ const resources = {
       business_profile_update_failed: "Business profile update failed",
       permission_required: "Permission Required",
       camera_roll_permission_message: "Please grant camera roll permission to upload images",
-      feature_coming_soon: "Feature coming soon!"
+      feature_coming_soon: "Feature coming soon!",
+      
+      // Profil d'entreprise - Nouvelles traductions
+      locations: "Locations",
+      headquarters: "Headquarters",
+      sales_points: "Sales Points",
+      production_sites: "Production Sites",
+      add_sales_point: "Add Sales Point",
+      add_production_site: "Add Production Site",
+      latitude: "Latitude",
+      longitude: "Longitude",
+      select_on_map: "Select on Map",
+      select_location: "Select Location",
+      select_headquarters_location: "Select Headquarters Location",
+      confirm_location: "Confirm Location",
+      location_permission_denied: "Location permission was denied",
+      location_error: "Error retrieving location",
+      
+      // Nouveaux identifiants nationaux
+      cnss_number: "CNSS Number",
+      inpp_number: "INPP Number",
+      founded_in: "Founded in",
+      employees: "Employees",
+      business_address: "Business Address",
+      contact_information: "Contact Information",
+      business_details: "Business Details",
+      edit_profile: "Edit Profile"
     }
   },
   fr: {
@@ -283,7 +309,33 @@ const resources = {
       business_profile_update_failed: "Échec de la mise à jour du profil d'entreprise",
       permission_required: "Permission Requise",
       camera_roll_permission_message: "Veuillez accorder l'autorisation d'accès aux photos pour télécharger des images",
-      feature_coming_soon: "Fonctionnalité à venir!"
+      feature_coming_soon: "Fonctionnalité à venir!",
+      
+      // Profil d'entreprise - Nouvelles traductions
+      locations: "Emplacements",
+      headquarters: "Siège Social",
+      sales_points: "Points de Vente",
+      production_sites: "Sites de Production",
+      add_sales_point: "Ajouter un Point de Vente",
+      add_production_site: "Ajouter un Site de Production",
+      latitude: "Latitude",
+      longitude: "Longitude",
+      select_on_map: "Sélectionner sur la Carte",
+      select_location: "Sélectionner un Emplacement",
+      select_headquarters_location: "Sélectionner l'Emplacement du Siège",
+      confirm_location: "Confirmer l'Emplacement",
+      location_permission_denied: "L'autorisation de localisation a été refusée",
+      location_error: "Erreur lors de la récupération de la position",
+      
+      // Nouveaux identifiants nationaux
+      cnss_number: "Numéro CNSS",
+      inpp_number: "Numéro INPP",
+      founded_in: "Fondée en",
+      employees: "Employés",
+      business_address: "Adresse de l'Entreprise",
+      contact_information: "Coordonnées",
+      business_details: "Détails de l'Entreprise",
+      edit_profile: "Modifier le Profil"
     }
   }
 };

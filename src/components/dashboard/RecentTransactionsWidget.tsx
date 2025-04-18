@@ -30,23 +30,36 @@ type MaterialCommunityIconName = React.ComponentProps<typeof MaterialCommunityIc
  */
 const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ transactions }) => {
   const navigation = useNavigation<any>();
-  const [currencyFormatter, setCurrencyFormatter] = useState<(amount: number) => string>(
-    (amount) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(amount)
-  );
+  const [currencyCode, setCurrencyCode] = useState<string>('XOF');
   
-  // Charger le formateur de devise au chargement du composant
+  // Charger les informations de devise au chargement du composant
   useEffect(() => {
-    const loadCurrencyFormatter = async () => {
+    const loadCurrencyInfo = async () => {
       try {
         const currencyInfo = await CurrencyService.getSelectedCurrencyInfo();
-        setCurrencyFormatter(() => currencyInfo.format);
+        if (currencyInfo && currencyInfo.code) {
+          setCurrencyCode(currencyInfo.code);
+        }
       } catch (error) {
         console.error('Erreur lors du chargement des informations de devise:', error);
       }
     };
     
-    loadCurrencyFormatter();
+    loadCurrencyInfo();
   }, []);
+
+  // Fonction sécurisée pour formater les montants
+  const formatCurrency = (amount: number): string => {
+    try {
+      return new Intl.NumberFormat('fr-FR', { 
+        style: 'currency', 
+        currency: currencyCode 
+      }).format(amount);
+    } catch (error) {
+      console.error('Erreur de formatage de devise:', error);
+      return `${amount.toFixed(0)} ${currencyCode}`;
+    }
+  };
 
   // Formater la date
   const formatDate = (date: Date): string => {
@@ -130,7 +143,7 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ tra
                   styles.amount,
                   transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount
                 ]}>
-                  {currencyFormatter(transaction.amount)}
+                  {formatCurrency(transaction.amount)}
                 </Text>
                 <Text style={styles.status}>
                   {transaction.status === 'posted' ? 'Validé' : 

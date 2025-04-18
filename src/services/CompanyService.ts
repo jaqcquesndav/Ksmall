@@ -5,15 +5,52 @@ const COMPANY_INFO_KEY = 'company_info';
 const CURRENT_COMPANY_ID_KEY = 'current_company_id';
 
 export interface CompanyInfo {
-  name: string;
-  address: string;
+  id?: string;               // Identifiant unique pour l'entreprise
+  name: string;              // Nom de l'entreprise
+  
+  // Forme juridique
+  legalForm: string;         // 'ETs', 'SARLU', 'SARL', 'SA', 'SAS', 'SNC', 'SCS', 'GIE', 'OTHER'
+  
+  // Identifiants nationaux
   registrationNumber: string; // RCCM (Registre du Commerce et du Crédit Mobilier)
-  taxId: string;             // NIF (Numéro d'Identification Fiscale)
+  taxId: string;              // NIF (Numéro d'Identification Fiscale)
+  idNat: string;              // ID National
+  cnssNumber: string;         // CNSS (Caisse Nationale de Sécurité Sociale)
+  inppNumber: string;         // INPP (Institut National de Préparation Professionnelle)
+  patentNumber: string;       // Numéro de Patente (pour les petites entreprises/commerces)
+  
+  // Coordonnées
   phone: string;
   email: string;
-  logo?: string;             // Base64-encoded logo image
-  id?: string;               // Unique identifier for the company
-  siren?: string;            // French company registration number
+  website?: string;
+  
+  // Adresse et localisation
+  address: {
+    street: string;
+    city: string;
+    postalCode?: string;
+    country: string;
+  };
+  
+  // Coordonnées géographiques
+  locations?: {
+    headquarters?: { latitude: number; longitude: number; description?: string };
+    salesPoints?: Array<{ latitude: number; longitude: number; name: string; description?: string }>;
+    productionSites?: Array<{ latitude: number; longitude: number; name: string; description?: string }>;
+  };
+  
+  // Autres informations
+  logo?: string;             // Image du logo encodée en Base64
+  creationDate?: string;     // Date de création
+  employeeCount?: number;    // Nombre d'employés
+  
+  // Associés et partenaires
+  associates?: Array<{
+    name: string;
+    contribution: number;
+    percentage: number;
+    role: string;
+  }>;
 }
 
 export async function getCompanyInfo(): Promise<CompanyInfo | null> {

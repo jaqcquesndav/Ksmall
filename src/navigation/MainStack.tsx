@@ -6,8 +6,10 @@ import TabNavigator from './TabNavigator';
 // Import all screens for the main stack
 import UserProfileScreen from '../screens/profile/UserProfileScreen';
 import BusinessProfileScreen from '../screens/profile/BusinessProfileScreen';
+import BusinessProfileEditScreen from '../screens/settings/BusinessProfileScreen'; // Import de notre écran d'édition
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import MapSelectorScreen from '../screens/settings/MapSelectorScreen'; // Import de l'écran de sélection de carte
 
 // Import settings sub-screens
 import UserManagementScreen from '../screens/settings/UserManagementScreen';
@@ -52,6 +54,8 @@ const MainStack: React.FC = () => {
       {/* Profile and common screens */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="BusinessProfile" component={BusinessProfileScreen} />
+      <Stack.Screen name="BusinessProfileEdit" component={BusinessProfileEditScreen} />
+      <Stack.Screen name="MapSelector" component={MapSelectorScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       
