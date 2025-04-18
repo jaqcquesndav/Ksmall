@@ -1,43 +1,78 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, SegmentedButtons } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/types';
 import AppHeader from '../../components/common/AppHeader';
-import { inventoryMockData } from '../../data/mockData';
+import InventoryService from '../../services/InventoryService';
+import { InventoryItem, InventoryTransaction, Supplier } from '../../services/InventoryService';
+import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
 
 const InventoryScreen = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const [loading, setLoading] = useState(true);
-  const [inventoryData, setInventoryData] = useState<any>(null);
+  const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeTab, setActiveTab] = useState('products');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    // Initialiser les tables d'inventaire au démarrage
+    const initInventory = async () => {
+      try {
+        await DatabaseService.initInventoryTables();
+      } catch (error) {
+        logger.error('Erreur lors de l\'initialisation des tables d\'inventaire:', error);
+      }
+    };
+
+    initInventory();
+  }, []);
+
+  useEffect(() => {
     const loadInventoryData = async () => {
       try {
-        logger.info('Loading inventory data');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setInventoryData(inventoryMockData);
+        setLoading(true);
+        logger.info('Chargement des données d\'inventaire');
+        
+        // Charger les données en parallèle pour de meilleures performances
+        const [productsData, transactionsData, suppliersData] = await Promise.all([
+          InventoryService.getProducts(),
+          InventoryService.getInventoryTransactions(),
+          InventoryService.getSuppliers()
+        ]);
+        
+        setProducts(productsData);
+        setTransactions(transactionsData);
+        setSuppliers(suppliersData);
+        
+        logger.info(`Données chargées: ${productsData.length} produits, ${transactionsData.length} transactions, ${suppliersData.length} fournisseurs`);
       } catch (error) {
-        logger.error('Error loading inventory data', error);
+        logger.error('Erreur lors du chargement des données d\'inventaire:', error);
+        Alert.alert(
+          t('error'),
+          t('error_loading_inventory_data'),
+          [{ text: t('ok') }]
+        );
       } finally {
         setLoading(false);
       }
     };
 
     loadInventoryData();
-  }, []);
+  }, [t]);
 
-  const filteredProducts = inventoryData?.products?.filter((product: any) => 
+  // Filtrer les produits selon la recherche
+  const filteredProducts = products.filter(product => 
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  );
 
-  const renderProduct = ({ item }: { item: any }) => {
+  const renderProduct = ({ item }: { item: InventoryItem }) => {
     const isLowStock = item.quantity <= item.reorderPoint;
 
     return (
@@ -54,7 +89,7 @@ const InventoryScreen = () => {
               <Text style={styles.productSku}>{item.sku}</Text>
             </View>
             {isLowStock && (
-              <Chip mode="flat" style={styles.lowStockChip}>
+              <Chip icon="alert" mode="outlined" style={styles.lowStockChip}>
                 {t('low_stock')}
               </Chip>
             )}
@@ -66,12 +101,14 @@ const InventoryScreen = () => {
               <Text style={styles.detailValue}>{item.quantity}</Text>
             </View>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>{t('cost')}</Text>
-              <Text style={styles.detailValue}>${item.cost.toFixed(2)}</Text>
+              <Text style={styles.detailLabel}>{t('price')}</Text>
+              <Text style={styles.detailValue}>
+                {new Intl.NumberFormat('fr-CI', { style: 'currency', currency: 'XOF' }).format(item.price)}
+              </Text>
             </View>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>{t('price')}</Text>
-              <Text style={styles.detailValue}>${item.price.toFixed(2)}</Text>
+              <Text style={styles.detailLabel}>{t('category')}</Text>
+              <Text style={styles.detailValue}>{item.category}</Text>
             </View>
           </View>
         </Card.Content>
@@ -79,58 +116,73 @@ const InventoryScreen = () => {
     );
   };
 
-  const renderTransaction = ({ item }: { item: any }) => (
-    <Card 
-      style={styles.transactionCard} 
-      onPress={() => {
-        navigation.navigate('TransactionDetails' as any, { transactionId: item.id } as any);
-      }}
-    >
-      <Card.Content>
-        <View style={styles.transactionHeader}>
-          <Text style={styles.transactionType}>
-            {item.type === 'purchase' ? t('purchase') : item.type === 'sale' ? t('sale') : t('adjustment')}
-          </Text>
-          <Text style={styles.transactionDate}>{item.date}</Text>
-        </View>
-        <Text style={styles.transactionRef}>{item.reference}</Text>
-        <View style={styles.transactionDetails}>
-          <Text>{t('items')}: {item.items.length}</Text>
-          <Text style={styles.transactionAmount}>
-            ${(item.totalAmount || 0).toFixed(2)}
-          </Text>
-        </View>
-      </Card.Content>
-    </Card>
-  );
-
-  const renderSupplier = ({ item }: { item: any }) => (
-    <Card style={styles.supplierCard}>
-      <Card.Content>
-        <Text style={styles.supplierName}>{item.name}</Text>
-        <Text style={styles.supplierContact}>{item.contactPerson}</Text>
-        <View style={styles.contactDetails}>
-          <Text style={styles.contactText}>{item.email}</Text>
-          <Text style={styles.contactText}>{item.phone}</Text>
-        </View>
-      </Card.Content>
-    </Card>
-  );
-
-  if (loading) {
+  const renderTransaction = ({ item }: { item: InventoryTransaction }) => {
     return (
-      <View style={styles.container}>
-        <AppHeader title={t('inventory')} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6200EE" />
-        </View>
-      </View>
+      <Card 
+        style={styles.transactionCard} 
+        onPress={() => {
+          navigation.navigate('TransactionDetails' as any, { transactionId: item.id } as any);
+        }}
+      >
+        <Card.Content>
+          <View style={styles.transactionHeader}>
+            <View>
+              <Text style={styles.transactionDate}>{new Date(item.date).toLocaleDateString()}</Text>
+              <Text style={styles.transactionReference}>{item.reference}</Text>
+            </View>
+            
+            <Chip mode="outlined" style={styles.typeChip}>
+              {t(item.type)}
+            </Chip>
+          </View>
+          
+          <View style={styles.transactionDetails}>
+            <Text>{t('items_count', { count: item.items.length })}</Text>
+            {item.totalAmount > 0 && (
+              <Text style={styles.transactionAmount}>
+                {new Intl.NumberFormat('fr-CI', { style: 'currency', currency: 'XOF' }).format(item.totalAmount)}
+              </Text>
+            )}
+          </View>
+          
+          <Text style={styles.transactionStatus}>
+            {t(`status_${item.status}`)}
+          </Text>
+        </Card.Content>
+      </Card>
     );
-  }
+  };
+
+  const renderSupplier = ({ item }: { item: Supplier }) => {
+    return (
+      <Card 
+        style={styles.supplierCard} 
+        onPress={() => {
+          navigation.navigate('SupplierDetails' as any, { supplierId: item.id } as any);
+        }}
+      >
+        <Card.Content>
+          <Text style={styles.supplierName}>{item.name}</Text>
+          <Text style={styles.supplierContactName}>{item.contactPerson}</Text>
+          
+          <View style={styles.supplierDetails}>
+            <View style={styles.contactItem}>
+              <Text style={styles.contactLabel}>{t('phone')}</Text>
+              <Text style={styles.contactValue}>{item.phone}</Text>
+            </View>
+            <View style={styles.contactItem}>
+              <Text style={styles.contactLabel}>{t('email')}</Text>
+              <Text style={styles.contactValue}>{item.email}</Text>
+            </View>
+          </View>
+        </Card.Content>
+      </Card>
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <AppHeader title={t('inventory')} />
+      <AppHeader title={t('inventory')} showBack={false} />
       
       <SegmentedButtons
         value={activeTab}
@@ -142,58 +194,87 @@ const InventoryScreen = () => {
         ]}
         style={styles.segmentedButtons}
       />
-
-      {activeTab === 'products' && (
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>{t('loading_data')}</Text>
+        </View>
+      ) : (
         <>
-          <Searchbar
-            placeholder={t('search_products')}
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={styles.searchbar}
-          />
+          {activeTab === 'products' && (
+            <>
+              <Searchbar
+                placeholder={t('search_products')}
+                onChangeText={setSearchQuery}
+                value={searchQuery}
+                style={styles.searchbar}
+              />
+              
+              <FlatList
+                data={filteredProducts}
+                keyExtractor={(item) => item.id}
+                renderItem={renderProduct}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>{t('no_products_found')}</Text>
+                }
+              />
+              
+              <FAB
+                icon="plus"
+                style={styles.fab}
+                onPress={() => {
+                  navigation.navigate('AddProduct' as any);
+                }}
+              />
+            </>
+          )}
           
-          <FlatList
-            data={filteredProducts}
-            keyExtractor={(item) => item.id}
-            renderItem={renderProduct}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>{t('no_products_found')}</Text>
-            }
-          />
+          {activeTab === 'transactions' && (
+            <>
+              <FlatList
+                data={transactions}
+                keyExtractor={(item) => item.id}
+                renderItem={renderTransaction}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>{t('no_transactions_found')}</Text>
+                }
+              />
+              
+              <FAB
+                icon="plus"
+                style={styles.fab}
+                onPress={() => {
+                  navigation.navigate('CreateTransaction' as any);
+                }}
+              />
+            </>
+          )}
           
-          <FAB
-            icon="plus"
-            style={styles.fab}
-            onPress={() => {
-              navigation.navigate('AddProduct' as any);
-            }}
-          />
+          {activeTab === 'suppliers' && (
+            <>
+              <FlatList
+                data={suppliers}
+                keyExtractor={(item) => item.id}
+                renderItem={renderSupplier}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>{t('no_suppliers_found')}</Text>
+                }
+              />
+              
+              <FAB
+                icon="plus"
+                style={styles.fab}
+                onPress={() => {
+                  navigation.navigate('AddSupplier' as any);
+                }}
+              />
+            </>
+          )}
         </>
-      )}
-      
-      {activeTab === 'transactions' && (
-        <FlatList
-          data={inventoryData?.transactions || []}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTransaction}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>{t('no_transactions_found')}</Text>
-          }
-        />
-      )}
-      
-      {activeTab === 'suppliers' && (
-        <FlatList
-          data={inventoryData?.suppliers || []}
-          keyExtractor={(item) => item.id}
-          renderItem={renderSupplier}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>{t('no_suppliers_found')}</Text>
-          }
-        />
       )}
     </View>
   );
@@ -204,104 +285,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  segmentedButtons: {
+    margin: 16,
+    marginBottom: 8,
+  },
+  searchbar: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  segmentedButtons: {
-    margin: 16,
-  },
-  searchbar: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
   },
   listContent: {
     padding: 16,
-    paddingBottom: 80,
-  },
-  productCard: {
-    marginBottom: 16,
-  },
-  productHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  productSku: {
-    fontSize: 12,
-    color: '#666',
-  },
-  lowStockChip: {
-    backgroundColor: '#FFEBEE',
-  },
-  productDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailItem: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  transactionCard: {
-    marginBottom: 16,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  transactionType: {
-    fontWeight: 'bold',
-    color: '#6200EE',
-  },
-  transactionDate: {
-    color: '#666',
-  },
-  transactionRef: {
-    marginVertical: 8,
-  },
-  transactionDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  transactionAmount: {
-    fontWeight: 'bold',
-  },
-  supplierCard: {
-    marginBottom: 16,
-  },
-  supplierName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  supplierContact: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  contactDetails: {
-    marginTop: 8,
-  },
-  contactText: {
-    fontSize: 14,
-    marginBottom: 4,
+    paddingTop: 8,
   },
   emptyText: {
     textAlign: 'center',
     marginTop: 32,
+    fontSize: 16,
     color: '#666',
   },
   fab: {
@@ -309,6 +317,104 @@ const styles = StyleSheet.create({
     margin: 16,
     right: 0,
     bottom: 0,
+  },
+  // Produits
+  productCard: {
+    marginBottom: 16,
+  },
+  productHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  productName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  productSku: {
+    fontSize: 14,
+    color: '#666',
+  },
+  lowStockChip: {
+    backgroundColor: '#ffecb3',
+  },
+  productDetails: {
+    marginTop: 8,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  detailLabel: {
+    color: '#666',
+  },
+  detailValue: {
+    fontWeight: '500',
+  },
+  // Transactions
+  transactionCard: {
+    marginBottom: 16,
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  transactionDate: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  transactionReference: {
+    fontSize: 14,
+    color: '#666',
+  },
+  typeChip: {
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  transactionDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  transactionAmount: {
+    fontWeight: '500',
+  },
+  transactionStatus: {
+    marginTop: 4,
+    fontStyle: 'italic',
+    color: '#666',
+  },
+  // Suppliers
+  supplierCard: {
+    marginBottom: 16,
+  },
+  supplierName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  supplierContactName: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  supplierDetails: {
+    marginTop: 8,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  contactLabel: {
+    color: '#666',
+  },
+  contactValue: {
+    fontWeight: '500',
   },
 });
 

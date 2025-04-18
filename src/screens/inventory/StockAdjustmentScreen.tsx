@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, TextInput, Button, RadioButton, Card, Title, Divider } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { useRoute, RouteProp } from '@react-navigation/native';
-import { useNavigation } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/common/AppHeader';
 import { MainStackParamList } from '../../navigation/types';
+import InventoryService from '../../services/InventoryService';
+import logger from '../../utils/logger';
 
 type StockAdjustmentRouteProp = RouteProp<MainStackParamList, 'StockAdjustment'>;
 
@@ -15,24 +16,53 @@ const StockAdjustmentScreen: React.FC = () => {
   const route = useRoute<StockAdjustmentRouteProp>();
   const { productId } = route.params;
   
-  // Mock product data
-  const [product, setProduct] = useState({
+  // État du produit
+  const [product, setProduct] = useState<any>({
     id: productId,
-    name: 'Laptop Dell XPS 13',
-    currentStock: 12,
+    name: '',
+    currentStock: 0,
     unit: 'unit',
-    sku: 'DELL-XPS13-2023',
+    sku: '',
   });
   
-  // Form state
+  // État du formulaire
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove' | 'set'>('add');
   const [quantity, setQuantity] = useState<string>('1');
   const [reason, setReason] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [reference, setReference] = useState<string>('');
-  const [location, setLocation] = useState<string>('Main Warehouse');
+  const [location, setLocation] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Calculate new stock level
+  // Charger les informations du produit
+  useEffect(() => {
+    const loadProduct = async () => {
+      try {
+        const productData = await InventoryService.getProductById(productId);
+        if (productData) {
+          setProduct({
+            id: productId,
+            name: productData.name,
+            currentStock: productData.quantity,
+            unit: 'unit', // Par défaut, à adapter si nécessaire
+            sku: productData.sku,
+          });
+          setLocation(productData.location || '');
+        } else {
+          Alert.alert(t('error'), t('product_not_found'));
+          navigation.goBack();
+        }
+      } catch (error) {
+        logger.error('Erreur lors du chargement du produit:', error);
+        Alert.alert(t('error'), t('error_loading_product'));
+        navigation.goBack();
+      }
+    };
+
+    loadProduct();
+  }, [productId, navigation, t]);
+
+  // Calculer le nouveau niveau de stock
   const calculateNewStock = (): number => {
     const qty = Number(quantity) || 0;
     switch (adjustmentType) {
@@ -47,22 +77,46 @@ const StockAdjustmentScreen: React.FC = () => {
     }
   };
   
-  // Submit adjustment
-  const handleSubmit = () => {
-    const newStock = calculateNewStock();
-    console.log('Stock adjustment submitted', {
-      productId,
-      adjustmentType,
-      quantity: Number(quantity) || 0,
-      newStock,
-      reason,
-      notes,
-      reference,
-      location
-    });
-    
-    // Navigate back
-    navigation.goBack();
+  // Soumettre l'ajustement
+  const handleSubmit = async () => {
+    try {
+      setIsLoading(true);
+      const qty = Number(quantity);
+      
+      if (!reason) {
+        Alert.alert(t('error'), t('please_enter_reason'));
+        setIsLoading(false);
+        return;
+      }
+
+      if (!qty || qty <= 0) {
+        Alert.alert(t('error'), t('please_enter_valid_quantity'));
+        setIsLoading(false);
+        return;
+      }
+
+      // Appeler le service pour ajuster le stock
+      await InventoryService.adjustStock(
+        productId,
+        adjustmentType,
+        qty,
+        reason,
+        reference || undefined,
+        notes || undefined
+      );
+
+      // Afficher un message de succès
+      Alert.alert(
+        t('success'),
+        t('stock_adjustment_success'),
+        [{ text: t('ok'), onPress: () => navigation.goBack() }]
+      );
+    } catch (error) {
+      logger.error('Erreur lors de l\'ajustement du stock:', error);
+      Alert.alert(t('error'), t('stock_adjustment_error'));
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   return (
@@ -165,7 +219,8 @@ const StockAdjustmentScreen: React.FC = () => {
             mode="contained"
             onPress={handleSubmit}
             style={styles.submitButton}
-            disabled={!quantity || Number(quantity) <= 0}
+            disabled={isLoading || !quantity || Number(quantity) <= 0 || !reason}
+            loading={isLoading}
           >
             {t('submit_adjustment')}
           </Button>
@@ -174,6 +229,7 @@ const StockAdjustmentScreen: React.FC = () => {
             mode="outlined"
             onPress={() => navigation.goBack()}
             style={styles.cancelButton}
+            disabled={isLoading}
           >
             {t('cancel')}
           </Button>
@@ -244,10 +300,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#e8f5e9',
+    backgroundColor: '#f0f0f0',
     padding: 12,
     borderRadius: 4,
-    marginVertical: 8,
+    marginTop: 8,
   },
   newStockLabel: {
     fontSize: 16,
@@ -255,16 +311,21 @@ const styles = StyleSheet.create({
   newStockValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2E7D32',
+    color: '#2196F3',
   },
   buttonContainer: {
-    marginHorizontal: 16,
-    marginBottom: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    margin: 16,
+    marginTop: 8,
   },
   submitButton: {
-    marginBottom: 8,
+    flex: 1,
+    marginRight: 8,
   },
   cancelButton: {
+    flex: 1,
+    marginLeft: 8,
   },
 });
 

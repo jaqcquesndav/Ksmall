@@ -205,6 +205,62 @@ class DatabaseService {
             )`,
             []
           );
+
+          // Ajouter la table des fournisseurs
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS inventory_suppliers (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              contact_person TEXT,
+              email TEXT,
+              phone TEXT,
+              address TEXT,
+              payment_terms TEXT,
+              notes TEXT,
+              created_at TEXT,
+              updated_at TEXT
+            )`,
+            []
+          );
+
+          // Ajouter la table des transactions d'inventaire
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS inventory_transactions (
+              id TEXT PRIMARY KEY,
+              type TEXT NOT NULL,
+              date TEXT NOT NULL,
+              reference TEXT NOT NULL,
+              supplier_id TEXT,
+              customer_name TEXT,
+              status TEXT NOT NULL,
+              notes TEXT,
+              total_amount REAL DEFAULT 0,
+              created_at TEXT,
+              updated_at TEXT
+            )`,
+            []
+          );
+
+          // Ajouter la table des éléments de transactions d'inventaire
+          await this.executeQuery(
+            db,
+            `CREATE TABLE IF NOT EXISTS inventory_transaction_items (
+              id TEXT PRIMARY KEY,
+              transaction_id TEXT NOT NULL,
+              product_id INTEGER NOT NULL,
+              quantity INTEGER NOT NULL,
+              unit_price REAL,
+              unit_cost REAL,
+              total_price REAL,
+              total_cost REAL,
+              reason TEXT,
+              FOREIGN KEY (transaction_id) REFERENCES inventory_transactions (id) ON DELETE CASCADE,
+              FOREIGN KEY (product_id) REFERENCES inventory_items (id)
+            )`,
+            []
+          );
           
           await this.executeQuery(
             db,
@@ -1265,6 +1321,156 @@ class DatabaseService {
       }
     } catch (error) {
       logger.error('Error initializing accounting_accounts table:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialise les tables d'inventaire et charge des données de démonstration
+   */
+  async initInventoryTables(): Promise<void> {
+    try {
+      const db = await this.getDBConnection();
+      
+      // Vérifier si les tables existent
+      const [tableCheck] = await this.executeQuery(
+        db,
+        'SELECT name FROM sqlite_master WHERE type="table" AND name="inventory_suppliers"',
+        []
+      );
+      
+      // Si la table des fournisseurs n'existe pas, il y a une bonne chance que les autres tables d'inventaire n'aient pas été créées
+      if (!tableCheck || tableCheck.rows.length === 0) {
+        logger.info('Initialisation des tables d\'inventaire');
+        
+        // Créer la table des fournisseurs si elle n'existe pas déjà
+        await this.executeQuery(
+          db,
+          `CREATE TABLE IF NOT EXISTS inventory_suppliers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            contact_person TEXT,
+            email TEXT,
+            phone TEXT,
+            address TEXT,
+            payment_terms TEXT,
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT
+          )`,
+          []
+        );
+        
+        // Créer la table des transactions d'inventaire
+        await this.executeQuery(
+          db,
+          `CREATE TABLE IF NOT EXISTS inventory_transactions (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            reference TEXT NOT NULL,
+            supplier_id TEXT,
+            customer_name TEXT,
+            status TEXT NOT NULL,
+            notes TEXT,
+            total_amount REAL DEFAULT 0,
+            created_at TEXT,
+            updated_at TEXT
+          )`,
+          []
+        );
+        
+        // Créer la table des éléments de transactions d'inventaire
+        await this.executeQuery(
+          db,
+          `CREATE TABLE IF NOT EXISTS inventory_transaction_items (
+            id TEXT PRIMARY KEY,
+            transaction_id TEXT NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price REAL,
+            unit_cost REAL,
+            total_price REAL,
+            total_cost REAL,
+            reason TEXT,
+            FOREIGN KEY (transaction_id) REFERENCES inventory_transactions (id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES inventory_items (id)
+          )`,
+          []
+        );
+        
+        // Créer des index pour améliorer les performances
+        await db.transaction(tx => {
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_items_sku ON inventory_items (sku);');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_items_category ON inventory_items (category);');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_items_supplier ON inventory_items (supplier);');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_transactions_date ON inventory_transactions (date);');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_transactions_type ON inventory_transactions (type);');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_inventory_transaction_items_product ON inventory_transaction_items (product_id);');
+        });
+        
+        logger.info('Tables d\'inventaire créées avec succès');
+        
+        // Charger des fournisseurs de démonstration
+        const now = new Date().toISOString();
+        const suppliers = [
+          {
+            id: 'sup1',
+            name: 'Dell Afrique',
+            contact_person: 'Jean Dupont',
+            email: 'jean.dupont@dell.co.ci',
+            phone: '+225 0123456789',
+            address: 'Abidjan, Côte d\'Ivoire',
+            created_at: now,
+            updated_at: now
+          },
+          {
+            id: 'sup2',
+            name: 'Samsung Electronics',
+            contact_person: 'Marie Koné',
+            email: 'marie.kone@samsung.co.ci',
+            phone: '+225 0798765432',
+            address: 'Abidjan, Côte d\'Ivoire',
+            created_at: now,
+            updated_at: now
+          },
+          {
+            id: 'sup3',
+            name: 'LG Electronics',
+            contact_person: 'Pierre Kouamé',
+            email: 'pierre.kouame@lg.co.ci',
+            phone: '+225 0587654321',
+            address: 'Abidjan, Côte d\'Ivoire',
+            created_at: now,
+            updated_at: now
+          }
+        ];
+        
+        await db.transaction(tx => {
+          for (const supplier of suppliers) {
+            tx.executeSql(
+              `INSERT INTO inventory_suppliers (id, name, contact_person, email, phone, address, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                supplier.id,
+                supplier.name,
+                supplier.contact_person,
+                supplier.email,
+                supplier.phone,
+                supplier.address,
+                supplier.created_at,
+                supplier.updated_at
+              ]
+            );
+          }
+        });
+        
+        logger.info('Données de démonstration pour l\'inventaire chargées avec succès');
+      } else {
+        logger.debug('Les tables d\'inventaire existent déjà');
+      }
+    } catch (error) {
+      logger.error('Erreur lors de l\'initialisation des tables d\'inventaire:', error);
       throw error;
     }
   }
