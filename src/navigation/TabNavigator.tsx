@@ -6,11 +6,12 @@ import { useTheme } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ChatScreen from '../screens/main/ChatScreen';
-import AccountingDashboardScreen from '../screens/accounting/AccountingDashboardScreen';
+import AccountingNavigator from './AccountingNavigator';
 import InventoryScreen from '../screens/main/InventoryScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import useOrientation from '../hooks/useOrientation';
 import { View, StyleSheet } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
@@ -61,13 +62,45 @@ const TabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="Accounting"
-        component={AccountingDashboardScreen}
+        component={AccountingNavigator}
         options={{
           title: t('accounting'),
           tabBarIcon: ({ color, size }) => (
             <Icon name="calculator-variant-outline" size={size} color={color} />
           ),
         }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Empêcher le comportement par défaut de navigation
+            e.preventDefault();
+            
+            // Toujours réinitialiser la pile de navigation de comptabilité à l'écran principal
+            // quand l'utilisateur clique sur l'onglet comptabilité
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: 'Accounting',
+                params: {},
+                merge: true,
+              })
+            );
+            
+            // Puis réinitialiser la pile interne de l'AccountingNavigator
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [
+                  { 
+                    name: 'Accounting', 
+                    state: {
+                      routes: [{ name: 'AccountingDashboard' }],
+                      index: 0
+                    }
+                  },
+                ],
+              })
+            );
+          },
+        })}
       />
       <Tab.Screen
         name="Inventory"

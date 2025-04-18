@@ -1,6 +1,6 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import { RootStackParamList } from './types';  // Correction du chemin d'importation
+import { RootStackParamList } from './types';
 
 // Imports complets des écrans de comptabilité
 import AccountingDashboardScreen from '../screens/accounting/AccountingDashboardScreen';

@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import CurrencyService from '../../services/CurrencyService';
+import { useCurrency } from '../../hooks/useCurrency';
 
 // Types pour les transactions
 interface Transaction {
@@ -16,6 +16,7 @@ interface Transaction {
   status: string;
   account?: string;
   reference?: string;
+  journal?: string; // Ajout du journal comptable associé
 }
 
 interface RecentTransactionsWidgetProps {
@@ -30,36 +31,7 @@ type MaterialCommunityIconName = React.ComponentProps<typeof MaterialCommunityIc
  */
 const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ transactions }) => {
   const navigation = useNavigation<any>();
-  const [currencyCode, setCurrencyCode] = useState<string>('XOF');
-  
-  // Charger les informations de devise au chargement du composant
-  useEffect(() => {
-    const loadCurrencyInfo = async () => {
-      try {
-        const currencyInfo = await CurrencyService.getSelectedCurrencyInfo();
-        if (currencyInfo && currencyInfo.code) {
-          setCurrencyCode(currencyInfo.code);
-        }
-      } catch (error) {
-        console.error('Erreur lors du chargement des informations de devise:', error);
-      }
-    };
-    
-    loadCurrencyInfo();
-  }, []);
-
-  // Fonction sécurisée pour formater les montants
-  const formatCurrency = (amount: number): string => {
-    try {
-      return new Intl.NumberFormat('fr-FR', { 
-        style: 'currency', 
-        currency: currencyCode 
-      }).format(amount);
-    } catch (error) {
-      console.error('Erreur de formatage de devise:', error);
-      return `${amount.toFixed(0)} ${currencyCode}`;
-    }
-  };
+  const { formatAmount, currency } = useCurrency();
 
   // Formater la date
   const formatDate = (date: Date): string => {
@@ -95,13 +67,20 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ tra
     return '#607D8B';
   };
 
+  // Obtenir le nom du journal pour les comptes de trésorerie
+  const getTreasuryJournalName = (transaction: Transaction): string | null => {
+    // Ne retourner un nom de journal que pour les comptes de trésorerie (classe 5)
+    if (transaction.account?.startsWith('5') && transaction.journal) {
+      return transaction.journal;
+    }
+    return null;
+  };
+
   // Gérer le clic sur une transaction
   const handleTransactionPress = (transactionId: string) => {
-    console.log(`Navigation vers TransactionDetails avec ID: ${transactionId}`);
-    // Utiliser une navigation imbriquée pour accéder à TransactionDetails depuis l'onglet Accounting
     navigation.navigate('MainTabs', {
       screen: 'Accounting',
-      params: { 
+      params: {
         screen: 'TransactionDetails',
         params: { transactionId }
       }
@@ -119,44 +98,55 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ tra
 
   return (
     <View style={styles.container}>
-      {transactions.map((transaction, index) => (
-        <React.Fragment key={transaction.id}>
-          <List.Item
-            title={transaction.description}
-            description={`${formatDate(transaction.date)} • ${transaction.reference || 'Sans référence'}`}
-            left={props => (
-              <Avatar.Icon 
-                {...props} 
-                icon={() => (
-                  <MaterialCommunityIcons 
-                    name={getAccountIcon(transaction.account)} 
-                    size={24} 
-                    color="white"
-                  />
-                )}
-                style={{backgroundColor: getAccountColor(transaction.account)}}
-              />
-            )}
-            right={props => (
-              <View style={styles.amountContainer}>
-                <Text style={[
-                  styles.amount,
-                  transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount
-                ]}>
-                  {formatCurrency(transaction.amount)}
-                </Text>
-                <Text style={styles.status}>
-                  {transaction.status === 'posted' ? 'Validé' : 
-                   transaction.status === 'pending' ? 'En attente' : 'Annulé'}
-                </Text>
-              </View>
-            )}
-            onPress={() => handleTransactionPress(transaction.id)}
-            style={styles.listItem}
-          />
-          {index < transactions.length - 1 && <Divider style={styles.divider} />}
-        </React.Fragment>
-      ))}
+      {transactions.map((transaction, index) => {
+        const journalName = getTreasuryJournalName(transaction);
+        
+        return (
+          <React.Fragment key={transaction.id}>
+            <List.Item
+              title={transaction.description}
+              description={() => (
+                <View>
+                  <Text>{`${formatDate(transaction.date)} • ${transaction.reference || 'Sans référence'}`}</Text>
+                  {journalName && (
+                    <Text style={styles.journalName}>Journal: {journalName}</Text>
+                  )}
+                </View>
+              )}
+              left={props => (
+                <Avatar.Icon 
+                  {...props} 
+                  icon={() => (
+                    <MaterialCommunityIcons 
+                      name={getAccountIcon(transaction.account)} 
+                      size={24} 
+                      color="white"
+                    />
+                  )}
+                  style={{backgroundColor: getAccountColor(transaction.account)}}
+                />
+              )}
+              right={props => (
+                <View style={styles.amountContainer}>
+                  <Text style={[
+                    styles.amount,
+                    transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount
+                  ]}>
+                    {formatAmount(transaction.amount)}
+                  </Text>
+                  <Text style={styles.status}>
+                    {transaction.status === 'posted' ? 'Validé' : 
+                     transaction.status === 'pending' ? 'En attente' : 'Annulé'}
+                  </Text>
+                </View>
+              )}
+              onPress={() => handleTransactionPress(transaction.id)}
+              style={styles.listItem}
+            />
+            {index < transactions.length - 1 && <Divider style={styles.divider} />}
+          </React.Fragment>
+        );
+      })}
       
       <View style={styles.viewAllContainer}>
         <Text 
@@ -216,6 +206,12 @@ const styles = StyleSheet.create({
   viewAll: {
     color: '#2196F3',
     fontSize: 14,
+  },
+  journalName: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontStyle: 'italic',
+    marginTop: 2,
   }
 });
 
