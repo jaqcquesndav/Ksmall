@@ -7,6 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Import des fichiers de traduction
 import fr from './locales/fr.json';
 import en from './locales/en.json';
+import sw from './locales/sw.json';
+import ln from './locales/ln.json';
 
 // Détection de la langue du système mais avec le français comme langue par défaut
 const getDefaultLanguage = () => {
@@ -43,6 +45,12 @@ const setupI18n = async () => {
         en: {
           translation: en,
         },
+        sw: {
+          translation: sw,
+        },
+        ln: {
+          translation: ln,
+        }
       },
       lng: language,
       fallbackLng: 'fr',
@@ -62,8 +70,10 @@ export const changeLanguage = async (language: string) => {
   try {
     await AsyncStorage.setItem('user-language', language);
     await i18n.changeLanguage(language);
+    return true;
   } catch (error) {
     console.log('Erreur lors du changement de langue:', error);
+    return false;
   }
 };
 

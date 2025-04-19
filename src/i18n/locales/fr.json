@@ -73,6 +73,11 @@
   "biometric_auth_description": "Se connecter avec une empreinte digitale ou Face ID",
   "logout": "Déconnexion",
   "language": "Langue",
+  "language_settings": "Paramètres de langue",
+  "language_settings_description": "Choisissez la langue que vous souhaitez utiliser dans l'application.",
+  "language_change_note": "Note : Certains éléments peuvent nécessiter un redémarrage de l'application pour appliquer le changement de langue.",
+  "language_changed": "Langue modifiée avec succès",
+  "language_change_failed": "Échec du changement de langue",
   "microphone_permission_error": "Veuillez autoriser l'accès au microphone",
   "full_duplex_mode": "Mode duplex intégral"
 }

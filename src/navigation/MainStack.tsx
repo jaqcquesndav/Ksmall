@@ -18,6 +18,7 @@ import ThemeSettingsScreen from '../screens/settings/ThemeSettingsScreen';
 import SecuritySettingsScreen from '../screens/settings/SecuritySettingsScreen';
 import NotificationSettingsScreen from '../screens/settings/NotificationSettingsScreen';
 import PermissionSettingsScreen from '../screens/settings/PermissionSettingsScreen';
+import LanguageSettingsScreen from '../screens/settings/LanguageSettingsScreen';
 import HelpSupportScreen from '../screens/settings/HelpSupportScreen';
 import AboutScreen from '../screens/settings/AboutScreen';
 import SubscriptionScreen from '../screens/settings/SubscriptionScreen';
@@ -69,6 +70,7 @@ const MainStack: React.FC = () => {
       <Stack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
       <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <Stack.Screen name="PermissionSettings" component={PermissionSettingsScreen} />
+      <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} />
       <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
       <Stack.Screen name="About" component={AboutScreen} />
       

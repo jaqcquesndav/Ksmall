@@ -73,6 +73,7 @@ export type MainStackParamList = {
   SecuritySettings: undefined;
   NotificationSettings: undefined;
   PermissionSettings: undefined;
+  LanguageSettings: undefined;
   HelpSupport: undefined;
   About: undefined;
   MapSelector: { onSelect: (location: any) => void };

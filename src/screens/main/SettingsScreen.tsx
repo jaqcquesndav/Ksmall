@@ -76,6 +76,12 @@ const SettingsScreen: React.FC = () => {
         title: 'app_settings',
         items: [
           {
+            title: 'language',
+            icon: 'translate',
+            description: 'language_settings_description',
+            onPress: () => handleNavigateToSettings('LanguageSettings'),
+          },
+          {
             title: 'theme',
             icon: 'palette',
             onPress: () => handleNavigateToSettings('ThemeSettings'),

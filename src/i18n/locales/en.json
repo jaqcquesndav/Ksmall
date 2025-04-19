@@ -73,6 +73,11 @@
   "biometric_auth_description": "Sign in with fingerprint or Face ID",
   "logout": "Logout",
   "language": "Language",
+  "language_settings": "Language Settings",
+  "language_settings_description": "Choose the language you want to use in the application.",
+  "language_change_note": "Note: Some elements may require restarting the application to apply the language change.",
+  "language_changed": "Language changed successfully",
+  "language_change_failed": "Failed to change language",
   "microphone_permission_error": "Please allow microphone access",
   "full_duplex_mode": "Full Duplex Mode"
 }
