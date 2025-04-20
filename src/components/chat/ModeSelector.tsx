@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Button, Menu, Text } from 'react-native-paper';
+import { Button, Menu } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
 // Define and export CHAT_MODES enum
@@ -55,19 +55,6 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onChangeMode }
     }
   };
 
-  const getModeDescription = (mode: CHAT_MODES): string => {
-    switch (mode) {
-      case CHAT_MODES.ACCOUNTING:
-        return t('accounting_mode_description');
-      case CHAT_MODES.INVENTORY:
-        return t('inventory_mode_description');
-      case CHAT_MODES.ANALYSIS:
-        return t('analysis_mode_description');
-      default:
-        return t('regular_mode_description');
-    }
-  };
-
   return (
     <View style={styles.container}>
       <Button
@@ -97,10 +84,6 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onChangeMode }
           />
         ))}
       </Menu>
-
-      <Text style={styles.descriptionText}>
-        {getModeDescription(currentMode)}
-      </Text>
     </View>
   );
 };
@@ -108,18 +91,13 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onChangeMode }
 const styles = StyleSheet.create({
   container: {
     padding: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#FFFFFF', // Changé de #f0f0f0 à blanc
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   button: {
     alignSelf: 'flex-start',
-  },
-  descriptionText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
+    backgroundColor: '#FFFFFF', // Ajout d'un fond blanc explicite pour le bouton
   }
 });
 

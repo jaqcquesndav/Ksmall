@@ -6,11 +6,11 @@ import { Provider as ReduxProvider } from 'react-redux';
 import { store } from './src/store';
 import { AuthProvider } from './src/context/AuthContext';
 import { CurrencyProvider } from './src/context/CurrencyContext';
+import { ThemeProvider, useThemeContext } from './src/context/ThemeContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import DatabaseService from './src/services/DatabaseService';
 import AccountingService from './src/services/AccountingService';
 import { api } from './src/services'; // Importer le proxy API
-import { theme } from './src/theme';
 import './src/i18n'; // Import translations
 import logger from './src/utils/logger';
 import ErrorBoundary from './src/components/error/ErrorBoundary';
@@ -26,6 +26,24 @@ LogBox.ignoreLogs([
   'ReactNativeFiberHostComponent: Calling getNode() on the ref of an Animated component',
   'VirtualizedLists should never be nested inside plain ScrollViews'
 ]);
+
+// Composant interne qui utilise le thème du contexte
+const ThemedApp = () => {
+  const { theme } = useThemeContext();
+  
+  return (
+    <PaperProvider theme={theme}>
+      <AuthProvider>
+        <CurrencyProvider>
+          <NavigationContainer>
+            <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
+            <RootNavigator />
+          </NavigationContainer>
+        </CurrencyProvider>
+      </AuthProvider>
+    </PaperProvider>
+  );
+};
 
 export default function App() {
   useEffect(() => {
@@ -61,16 +79,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ReduxProvider store={store}>
-        <PaperProvider theme={theme}>
-          <AuthProvider>
-            <CurrencyProvider>
-              <NavigationContainer>
-                <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
-                <RootNavigator />
-              </NavigationContainer>
-            </CurrencyProvider>
-          </AuthProvider>
-        </PaperProvider>
+        <ThemeProvider>
+          <ThemedApp />
+        </ThemeProvider>
       </ReduxProvider>
     </ErrorBoundary>
   );

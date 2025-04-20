@@ -70,17 +70,48 @@ const ChatScreen: React.FC = () => {
     logger.info('ChatScreen monté');
     
     const loadConversation = async () => {
-      if (route?.params?.conversationId) {
-        const conversation = await ConversationService.getConversationById(route.params.conversationId);
-        if (conversation) {
-          setCurrentConversation(conversation);
-          setChatMode(conversation.mode);
-          setMessages(conversation.messages);
+      try {
+        // Cas 1: Si un ID de conversation est fourni dans les paramètres de route, utiliser cette conversation
+        if (route?.params?.conversationId) {
+          const conversation = await ConversationService.getConversationById(route.params.conversationId);
+          if (conversation) {
+            setCurrentConversation(conversation);
+            setChatMode(conversation.mode);
+            setMessages(conversation.messages);
+            // Enregistrer comme dernière conversation active
+            await ConversationService.setLastActiveConversationId(conversation.id);
+            return;
+          }
+        }
+        
+        // Cas 2: Essayer de charger la dernière conversation active
+        const lastActiveId = await ConversationService.getLastActiveConversationId();
+        if (lastActiveId) {
+          const lastConversation = await ConversationService.getConversationById(lastActiveId);
+          if (lastConversation) {
+            setCurrentConversation(lastConversation);
+            setChatMode(lastConversation.mode);
+            setMessages(lastConversation.messages);
+            return;
+          }
+        }
+        
+        // Cas 3: Aucune conversation disponible, vérifier s'il y a des conversations existantes
+        const allConversations = await ConversationService.getConversations();
+        if (allConversations.length > 0) {
+          // Utiliser la conversation la plus récente
+          const mostRecent = allConversations.sort((a, b) => 
+            new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+          )[0];
+          setCurrentConversation(mostRecent);
+          setChatMode(mostRecent.mode);
+          setMessages(mostRecent.messages);
+          // Enregistrer comme dernière conversation active
+          await ConversationService.setLastActiveConversationId(mostRecent.id);
           return;
         }
-      }
-
-      if (messages.length === 0) {
+        
+        // Cas 4: Aucune conversation existante, créer une nouvelle conversation
         logger.debug('Initialisation du message de bienvenue');
         const welcomeMessage: Message = {
           id: generateUniqueId(),
@@ -93,6 +124,11 @@ const ChatScreen: React.FC = () => {
         
         const newConversation = await ConversationService.createConversation(chatMode, welcomeMessage);
         setCurrentConversation(newConversation);
+        // Enregistrer comme dernière conversation active
+        await ConversationService.setLastActiveConversationId(newConversation.id);
+      } catch (error) {
+        logger.error('Erreur lors du chargement de la conversation', error);
+        showErrorToUser('Erreur lors du chargement de la conversation', error);
       }
     };
     
@@ -345,6 +381,8 @@ const ChatScreen: React.FC = () => {
 
   const handleValidateMessage = async (message: Message) => {
     try {
+      setIsLoading(true);
+      
       await AIBackendService.validateEntry({
         id: message.id,
         type: message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY ? 'journal_entry' : 'inventory',
@@ -367,9 +405,33 @@ const ChatScreen: React.FC = () => {
         };
         await ConversationService.updateConversation(updatedConversation);
       }
+      
+      // Ajouter un message de confirmation pour l'écriture comptable
+      if (message.messageType === MESSAGE_TYPES.JOURNAL_ENTRY) {
+        // Créer un message système pour informer l'utilisateur
+        const confirmationMessage: Message = {
+          id: generateUniqueId(),
+          content: t('journal_entry_validated_message', { 
+            reference: message.journalData?.reference || '' 
+          }) || `L'écriture comptable ${message.journalData?.reference || ''} a été validée et transférée vers le journal comptable.`,
+          messageType: MESSAGE_TYPES.REGULAR_CHAT,
+          isUser: false,
+          timestamp: new Date().toISOString(),
+          isSystemMessage: true
+        };
+        
+        // Ajouter le message à la conversation
+        setMessages(prev => [...prev, confirmationMessage]);
+        
+        if (currentConversation) {
+          await ConversationService.addMessage(currentConversation.id, confirmationMessage);
+        }
+      }
     } catch (error) {
       logger.error('Erreur lors de la validation du message', error);
       showErrorToUser('Erreur lors de la validation', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -419,6 +481,10 @@ const ChatScreen: React.FC = () => {
       setCurrentConversation(newConversation);
       setChatMode(CHAT_MODES.REGULAR);
       setMessages([welcomeMessage]);
+      
+      // Enregistrer comme dernière conversation active
+      await ConversationService.setLastActiveConversationId(newConversation.id);
+      
     } catch (error) {
       logger.error('Erreur lors de la création d\'une nouvelle conversation', error);
       showErrorToUser('Erreur lors de la création d\'une nouvelle conversation', error);

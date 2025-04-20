@@ -2,6 +2,7 @@ import { Message } from '../components/chat/DynamicResponseBuilder';
 import { CHAT_MODES } from '../components/chat/ModeSelector';
 import { getMockResponseForMessage } from './MockResponseService';
 import logger from '../utils/logger';
+import AccountingService from './AccountingService';
 
 /**
  * Service pour interagir avec l'IA backend
@@ -123,16 +124,48 @@ class AIBackendService {
   }
 
   /**
-   * Valide une entrée (écriture comptable ou inventaire)
+   * Valide une entrée (écriture comptable ou inventaire) et la transfère vers le journal comptable
+   * si c'est une écriture comptable
+   * @returns Un objet contenant l'ID de l'entrée de journal en cas de succès
    */
-  async validateEntry(params: { id: string; type: 'journal_entry' | 'inventory'; data: any }): Promise<void> {
+  async validateEntry(params: { id: string; type: 'journal_entry' | 'inventory'; data: any }): Promise<{ journalEntryId?: string }> {
     try {
       logger.debug(`Validation de l'entrée ${params.type}`, params);
-      // En production, ceci serait un appel API réel
-      // return await api.post('/ai/validate', params);
+      
+      // Si c'est une écriture comptable, la transférer vers le journal comptable
+      if (params.type === 'journal_entry') {
+        const journalData = params.data;
+        
+        // Préparer les données au format attendu par AccountingService
+        const journalEntry = {
+          date: journalData.date,
+          reference: journalData.reference || `JL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+          description: journalData.description,
+          entries: journalData.entries.map((entry: any) => ({
+            accountId: entry.accountNumber,
+            accountName: entry.account,
+            debit: entry.debit || 0,
+            credit: entry.credit || 0,
+            description: entry.description || journalData.description
+          })),
+          status: 'validated', // Utilisation de 'validated' au lieu de 'posted' pour cohérence
+          total: journalData.totalDebit || journalData.totalCredit, // Ils doivent être égaux si l'écriture est équilibrée
+          attachments: journalData.attachments || [],
+          companyId: 'current' // Sera remplacé par le service avec l'ID de l'entreprise actuelle
+        };
+        
+        // Enregistrer l'entrée dans le journal comptable
+        const journalEntryId = await AccountingService.createJournalEntry(journalEntry);
+        logger.info(`Écriture comptable ${journalEntry.reference} transférée vers le journal comptable avec l'ID: ${journalEntryId}`);
+        
+        // Retourner l'ID du journal pour référence future
+        return { journalEntryId };
+      }
+      
+      // En production, ceci serait un appel API réel pour mettre à jour le statut dans le chat
+      // await api.post('/ai/validate', params);
 
-      // Pour la démonstration, simulons une réponse réussie
-      return Promise.resolve();
+      return {};
     } catch (error) {
       logger.error(`Erreur lors de la validation de l'entrée ${params.type}`, error);
       throw error;

@@ -99,10 +99,106 @@ class AccountingService {
     status?: 'pending' | 'validated' | 'canceled'
   ): Promise<Transaction[]> {
     try {
+      // 1. Récupérer les transactions depuis AsyncStorage
       const data = await AsyncStorage.getItem('transactions');
       let transactions: Transaction[] = data ? JSON.parse(data) : [];
       
-      // Si aucune transaction n'est trouvée dans AsyncStorage, utiliser les données mock
+      // 2. Récupérer les transactions depuis la base de données SQLite
+      try {
+        const db = await DatabaseService.getDatabase();
+        
+        // Construire la requête SQL avec les conditions si nécessaire
+        let sqlQuery = `SELECT * FROM accounting_transactions`;
+        const queryParams = [];
+        
+        // Ajouter des conditions de filtrage si nécessaires
+        const conditions = [];
+        
+        if (startDate) {
+          conditions.push("date >= ?");
+          queryParams.push(startDate.toISOString().split('T')[0]);
+        }
+        
+        if (endDate) {
+          conditions.push("date <= ?");
+          queryParams.push(endDate.toISOString().split('T')[0]);
+        }
+        
+        if (status) {
+          conditions.push("status = ?");
+          queryParams.push(status);
+        }
+        
+        if (conditions.length > 0) {
+          sqlQuery += ' WHERE ' + conditions.join(' AND ');
+        }
+        
+        // Exécuter la requête pour récupérer les transactions
+        const [sqlTransactions] = await DatabaseService.executeQuery(
+          db,
+          sqlQuery,
+          queryParams
+        );
+
+        if (sqlTransactions && sqlTransactions.rows && sqlTransactions.rows.length > 0) {
+          logger.info(`Récupération de ${sqlTransactions.rows.length} transactions depuis la base de données`);
+          
+          for (let i = 0; i < sqlTransactions.rows.length; i++) {
+            const transaction = sqlTransactions.rows.item(i);
+            
+            // Récupérer les entries pour cette transaction
+            const [sqlEntries] = await DatabaseService.executeQuery(
+              db,
+              `SELECT e.*, a.name as account_name 
+               FROM accounting_entries e 
+               LEFT JOIN accounting_accounts a ON e.account_code = a.code
+               WHERE e.transaction_id = ?`,
+              [transaction.id]
+            );
+            
+            const entries: TransactionEntry[] = [];
+            if (sqlEntries && sqlEntries.rows && sqlEntries.rows.length > 0) {
+              for (let j = 0; j < sqlEntries.rows.length; j++) {
+                const entry = sqlEntries.rows.item(j);
+                entries.push({
+                  accountId: entry.account_code,
+                  accountNumber: entry.account_code,
+                  accountName: entry.account_name || entry.description,
+                  debit: entry.debit,
+                  credit: entry.credit
+                });
+              }
+            }
+            
+            // Créer l'objet transaction
+            const transactionObj: Transaction = {
+              id: transaction.id,
+              date: transaction.date,
+              reference: transaction.reference,
+              description: transaction.description,
+              entries: entries,
+              amount: transaction.total,
+              status: transaction.status as 'pending' | 'validated' | 'canceled',
+              createdAt: transaction.created_at,
+              updatedAt: transaction.updated_at,
+              createdBy: transaction.created_by || 'System',
+              updatedBy: transaction.updated_by,
+              validatedBy: transaction.validated_by,
+              validatedAt: transaction.validated_at,
+              attachments: []
+            };
+            
+            // Ajouter la transaction à la liste s'il n'existe pas déjà avec le même ID
+            if (!transactions.some(t => t.id === transactionObj.id)) {
+              transactions.push(transactionObj);
+            }
+          }
+        }
+      } catch (dbError) {
+        logger.warn('Erreur lors de la récupération des transactions depuis la base de données', dbError);
+      }
+      
+      // 3. Si aucune transaction n'est trouvée, utiliser les données mock
       if (transactions.length === 0) {
         const { transactionsMockData } = require('../data/transactionsMockData');
         transactions = transactionsMockData.map((transaction: any) => ({
@@ -123,17 +219,7 @@ class AccountingService {
         }));
       }
       
-      if (startDate || endDate || status) {
-        transactions = transactions.filter(transaction => {
-          const transactionDate = new Date(transaction.date);
-          const matchesStartDate = startDate ? transactionDate >= startDate : true;
-          const matchesEndDate = endDate ? transactionDate <= endDate : true;
-          const matchesStatus = status ? transaction.status === status : true;
-          
-          return matchesStartDate && matchesEndDate && matchesStatus;
-        });
-      }
-      
+      // 5. Trier par date (du plus récent au plus ancien)
       return transactions.sort((a, b) => 
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
@@ -147,18 +233,81 @@ class AccountingService {
   async getTransactionById(id: string): Promise<Transaction | null> {
     try {
       // Afficher l'ID recherché pour le débogage
-      console.log(`Recherche de la transaction avec ID: ${id}`);
+      logger.debug(`Recherche de la transaction avec ID: ${id}`);
 
-      // D'abord, essayer de récupérer les transactions depuis AsyncStorage
+      // 1. D'abord, essayer de récupérer les transactions depuis AsyncStorage
       const data = await AsyncStorage.getItem('transactions');
-      console.log(`Données AsyncStorage récupérées, longueur: ${data ? JSON.parse(data).length : 0}`);
-      
       let transactions: Transaction[] = data ? JSON.parse(data) : [];
       let transaction = transactions.find(t => t.id === id);
       
-      // Si aucune transaction n'est trouvée dans AsyncStorage, chercher dans les données mock
+      // 2. Si non trouvé dans AsyncStorage, rechercher dans la base de données SQLite
       if (!transaction) {
-        console.log("Transaction non trouvée dans AsyncStorage, recherche dans les données mock");
+        try {
+          logger.debug("Transaction non trouvée dans AsyncStorage, recherche dans la base de données");
+          const db = await DatabaseService.getDatabase();
+          
+          // Récupérer la transaction
+          const [sqlTransaction] = await DatabaseService.executeQuery(
+            db,
+            `SELECT * FROM accounting_transactions WHERE id = ?`,
+            [id]
+          );
+
+          if (sqlTransaction && sqlTransaction.rows && sqlTransaction.rows.length > 0) {
+            const transactionData = sqlTransaction.rows.item(0);
+            
+            // Récupérer les entrées pour cette transaction avec les noms de compte
+            const [sqlEntries] = await DatabaseService.executeQuery(
+              db,
+              `SELECT e.*, a.name as account_name 
+               FROM accounting_entries e 
+               LEFT JOIN accounting_accounts a ON e.account_code = a.code
+               WHERE e.transaction_id = ?`,
+              [id]
+            );
+            
+            const entries: TransactionEntry[] = [];
+            if (sqlEntries && sqlEntries.rows && sqlEntries.rows.length > 0) {
+              for (let j = 0; j < sqlEntries.rows.length; j++) {
+                const entry = sqlEntries.rows.item(j);
+                entries.push({
+                  accountId: entry.account_code,
+                  accountNumber: entry.account_code,
+                  accountName: entry.account_name || entry.description,
+                  debit: entry.debit,
+                  credit: entry.credit
+                });
+              }
+            }
+            
+            // Créer l'objet transaction
+            transaction = {
+              id: transactionData.id,
+              date: transactionData.date,
+              reference: transactionData.reference,
+              description: transactionData.description,
+              entries: entries,
+              amount: transactionData.total,
+              status: transactionData.status as 'pending' | 'validated' | 'canceled',
+              createdAt: transactionData.created_at,
+              updatedAt: transactionData.updated_at,
+              createdBy: transactionData.created_by || 'System',
+              updatedBy: transactionData.updated_by,
+              validatedBy: transactionData.validated_by,
+              validatedAt: transactionData.validated_at,
+              attachments: []
+            };
+            
+            logger.debug(`Transaction trouvée dans la base de données: ${transaction.reference}`);
+          }
+        } catch (dbError) {
+          logger.warn('Erreur lors de la recherche dans la base de données', dbError);
+        }
+      }
+      
+      // 3. Si toujours non trouvé, chercher dans les données mock
+      if (!transaction) {
+        logger.debug("Transaction non trouvée dans la base de données, recherche dans les données mock");
         // Importer directement les données mock
         const { transactionsMockData } = require('../data/transactionsMockData');
         
@@ -166,7 +315,7 @@ class AccountingService {
         const mockTransaction = transactionsMockData.find(t => t.id === id);
         
         if (mockTransaction) {
-          console.log("Transaction trouvée dans les données mock");
+          logger.debug("Transaction trouvée dans les données mock");
           // Convertir le format de la transaction mock pour assurer la compatibilité
           transaction = {
             id: mockTransaction.id,
@@ -185,13 +334,13 @@ class AccountingService {
             validatedAt: mockTransaction.validatedAt
           };
         } else {
-          console.log(`Transaction non trouvée dans les données mock pour ID: ${id}`);
+          logger.debug(`Transaction non trouvée dans les données mock pour ID: ${id}`);
         }
       }
       
       return transaction || null;
     } catch (error) {
-      console.error('Failed to get transaction', error);
+      logger.error('Failed to get transaction', error);
       throw error;
     }
   }

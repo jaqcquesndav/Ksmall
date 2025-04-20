@@ -138,6 +138,30 @@ class ConversationService {
       throw error;
     }
   }
+
+  /**
+   * Récupère l'ID de la dernière conversation active
+   */
+  async getLastActiveConversationId(): Promise<string | null> {
+    try {
+      const lastActiveId = await AsyncStorage.getItem('lastActiveConversationId');
+      return lastActiveId;
+    } catch (error) {
+      logger.error('Erreur lors de la récupération de la dernière conversation active', error);
+      return null;
+    }
+  }
+
+  /**
+   * Définit l'ID de la dernière conversation active
+   */
+  async setLastActiveConversationId(conversationId: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem('lastActiveConversationId', conversationId);
+    } catch (error) {
+      logger.error('Erreur lors de la définition de la dernière conversation active', error);
+    }
+  }
 }
 
 export default new ConversationService();

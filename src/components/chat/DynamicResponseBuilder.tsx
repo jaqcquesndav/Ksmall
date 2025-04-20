@@ -42,6 +42,7 @@ export interface Message {
   analysisData?: any;
   codeLanguage?: string;
   userReaction?: 'like' | 'dislike' | null;
+  isSystemMessage?: boolean; // Ajout de cette propriété pour les messages système
 }
 
 export interface InventoryData {

@@ -1,18 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, TextInput } from 'react-native';
 import { Card, DataTable, Button, useTheme, IconButton } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
+import { useCurrency } from '../../hooks/useCurrency';
 
 export interface JournalEntry {
-  id?: string;    // Add the ID field
+  id?: string;
   date: string;
-  reference?: string; // Add reference field
+  reference?: string;
   description: string;
   entries: Array<{
     account: string;
     accountNumber: string;
     debit: number;
     credit: number;
+    description?: string; // Ajout du champ description pour chaque ligne
   }>;
   totalDebit: number;
   totalCredit: number;
@@ -43,6 +45,20 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
   const [localData, setLocalData] = useState<JournalEntry>(data);
+  const { formatAmount } = useCurrency();
+  
+  // Générer une référence si elle n'existe pas
+  useEffect(() => {
+    if (!localData.reference) {
+      const today = new Date();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const randomId = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const newReference = `JL-${today.getFullYear()}${month}${day}-${randomId}`;
+      
+      updateLocalData({ reference: newReference });
+    }
+  }, []);
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -67,7 +83,7 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
   };
 
   const addEntry = () => {
-    const newEntries = [...localData.entries, { account: '', accountNumber: '', debit: 0, credit: 0 }];
+    const newEntries = [...localData.entries, { account: '', accountNumber: '', description: '', debit: 0, credit: 0 }];
     updateLocalData({ entries: newEntries });
   };
 
@@ -86,18 +102,31 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
 
   return (
     <Card style={styles.container}>
-      <Card.Title title={t('journal_entry')} />
+      <Card.Title title={t('journal_entry')} subtitle={displayData.reference ? `Réf: ${displayData.reference}` : ''} />
       <Card.Content>
         <View style={styles.headerInfo}>
           {isEditing ? (
             <>
-              <Text style={styles.fieldLabel}>{t('date')}:</Text>
-              <TextInput
-                style={styles.textInput}
-                value={displayData.date.split('T')[0]}
-                onChangeText={(text) => updateLocalData({ date: text })}
-                placeholder="YYYY-MM-DD"
-              />
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.fieldLabel}>{t('reference')}:</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={displayData.reference || ''}
+                    onChangeText={(text) => updateLocalData({ reference: text })}
+                    placeholder="JL-YYYYMMDD-####"
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.fieldLabel}>{t('date')}:</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={displayData.date.split('T')[0]}
+                    onChangeText={(text) => updateLocalData({ date: text })}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </View>
+              </View>
               <Text style={styles.fieldLabel}>{t('description')}:</Text>
               <TextInput
                 style={[styles.textInput, styles.descriptionInput]}
@@ -109,7 +138,19 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
             </>
           ) : (
             <>
-              <Text style={styles.date}>{formatDate(displayData.date)}</Text>
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.fieldLabel}>{t('date')}:</Text>
+                  <Text style={styles.date}>{formatDate(displayData.date)}</Text>
+                </View>
+                {displayData.reference && (
+                  <View style={styles.col}>
+                    <Text style={styles.fieldLabel}>{t('reference')}:</Text>
+                    <Text style={styles.reference}>{displayData.reference}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.fieldLabel}>{t('description')}:</Text>
               <Text style={styles.description}>{displayData.description}</Text>
             </>
           )}
@@ -117,11 +158,12 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
         
         <DataTable>
           <DataTable.Header>
-            <DataTable.Title>{t('account')}</DataTable.Title>
-            <DataTable.Title numeric>{t('debit')}</DataTable.Title>
-            <DataTable.Title numeric>{t('credit')}</DataTable.Title>
+            <DataTable.Title style={styles.accountCol}>{t('account')}</DataTable.Title>
+            <DataTable.Title style={styles.descriptionCol}>{t('account_description')}</DataTable.Title>
+            <DataTable.Title numeric style={styles.amountCol}>{t('debit')}</DataTable.Title>
+            <DataTable.Title numeric style={styles.amountCol}>{t('credit')}</DataTable.Title>
             {isEditing && (
-              <DataTable.Title style={{ width: 40 }}>
+              <DataTable.Title style={styles.actionCol}>
                 <Text></Text>
               </DataTable.Title>
             )}
@@ -131,7 +173,15 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
             <DataTable.Row key={index}>
               {isEditing ? (
                 <>
-                  <DataTable.Cell>
+                  <DataTable.Cell style={styles.accountCol}>
+                    <TextInput
+                      style={styles.textInput}
+                      value={entry.accountNumber}
+                      onChangeText={(text) => updateEntry(index, 'accountNumber', text)}
+                      placeholder={t('account_number')}
+                    />
+                  </DataTable.Cell>
+                  <DataTable.Cell style={styles.descriptionCol}>
                     <View>
                       <TextInput
                         style={styles.textInput}
@@ -140,14 +190,14 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
                         placeholder={t('account_name')}
                       />
                       <TextInput
-                        style={[styles.textInput, styles.accountNumber]}
-                        value={entry.accountNumber}
-                        onChangeText={(text) => updateEntry(index, 'accountNumber', text)}
-                        placeholder={t('account_number')}
+                        style={styles.textInput}
+                        value={entry.description || ''}
+                        onChangeText={(text) => updateEntry(index, 'description', text)}
+                        placeholder={t('entry_description')}
                       />
                     </View>
                   </DataTable.Cell>
-                  <DataTable.Cell numeric>
+                  <DataTable.Cell numeric style={styles.amountCol}>
                     <TextInput
                       style={[styles.textInput, styles.numberInput]}
                       value={entry.debit > 0 ? entry.debit.toString() : ''}
@@ -156,7 +206,7 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
                       placeholder="0.00"
                     />
                   </DataTable.Cell>
-                  <DataTable.Cell numeric>
+                  <DataTable.Cell numeric style={styles.amountCol}>
                     <TextInput
                       style={[styles.textInput, styles.numberInput]}
                       value={entry.credit > 0 ? entry.credit.toString() : ''}
@@ -165,7 +215,7 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
                       placeholder="0.00"
                     />
                   </DataTable.Cell>
-                  <DataTable.Cell style={{ width: 40 }}>
+                  <DataTable.Cell style={styles.actionCol}>
                     <IconButton
                       icon="minus-circle"
                       size={16}
@@ -175,17 +225,20 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
                 </>
               ) : (
                 <>
-                  <DataTable.Cell>
-                    <Text>
-                      {entry.account}
-                      <Text style={styles.accountNumber}> ({entry.accountNumber})</Text>
-                    </Text>
+                  <DataTable.Cell style={styles.accountCol}>
+                    <Text style={styles.accountNumber}>{entry.accountNumber}</Text>
                   </DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    {entry.debit > 0 ? `€${entry.debit.toFixed(2)}` : ''}
+                  <DataTable.Cell style={styles.descriptionCol}>
+                    <Text style={styles.accountName}>{entry.account}</Text>
+                    {entry.description && (
+                      <Text style={styles.entryDescription}>{entry.description}</Text>
+                    )}
                   </DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    {entry.credit > 0 ? `€${entry.credit.toFixed(2)}` : ''}
+                  <DataTable.Cell numeric style={styles.amountCol}>
+                    {entry.debit > 0 ? formatAmount(entry.debit) : ''}
+                  </DataTable.Cell>
+                  <DataTable.Cell numeric style={styles.amountCol}>
+                    {entry.credit > 0 ? formatAmount(entry.credit) : ''}
                   </DataTable.Cell>
                 </>
               )}
@@ -205,17 +258,20 @@ const JournalEntryWidget: React.FC<DynamicJournalEntryWidgetProps> = ({
           )}
 
           <DataTable.Row style={styles.totalRow}>
-            <DataTable.Cell>
+            <DataTable.Cell style={styles.accountCol}>
               <Text style={styles.totalLabel}>{t('total')}</Text>
             </DataTable.Cell>
-            <DataTable.Cell numeric>
-              <Text style={styles.totalValue}>€{displayData.totalDebit.toFixed(2)}</Text>
+            <DataTable.Cell style={styles.descriptionCol}>
+              <Text></Text>
             </DataTable.Cell>
-            <DataTable.Cell numeric>
-              <Text style={styles.totalValue}>€{displayData.totalCredit.toFixed(2)}</Text>
+            <DataTable.Cell numeric style={styles.amountCol}>
+              <Text style={styles.totalValue}>{formatAmount(displayData.totalDebit)}</Text>
+            </DataTable.Cell>
+            <DataTable.Cell numeric style={styles.amountCol}>
+              <Text style={styles.totalValue}>{formatAmount(displayData.totalCredit)}</Text>
             </DataTable.Cell>
             {isEditing && (
-              <DataTable.Cell style={{ width: 40 }}>
+              <DataTable.Cell style={styles.actionCol}>
                 <Text></Text>
               </DataTable.Cell>
             )}
@@ -255,18 +311,51 @@ const styles = StyleSheet.create({
   headerInfo: {
     marginBottom: 16,
   },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  col: {
+    flex: 1,
+    marginRight: 8,
+  },
   date: {
     fontSize: 14,
     color: '#666',
   },
-  description: {
-    fontSize: 16,
+  reference: {
+    fontSize: 14,
     fontWeight: 'bold',
+    color: '#444',
+  },
+  description: {
+    fontSize: 15,
     marginTop: 4,
   },
   accountNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  accountName: {
+    fontSize: 14,
+  },
+  entryDescription: {
     fontSize: 12,
-    color: '#888',
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  accountCol: {
+    flex: 2,
+  },
+  descriptionCol: {
+    flex: 4,
+  },
+  amountCol: {
+    flex: 2,
+  },
+  actionCol: {
+    width: 40,
   },
   totalRow: {
     borderTopWidth: 1,
@@ -291,8 +380,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 4,
-    padding: 8,
+    padding: 6,
     marginVertical: 2,
+    fontSize: 14,
   },
   numberInput: {
     width: 80,
@@ -300,7 +390,9 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontWeight: 'bold',
-    marginTop: 8,
+    marginTop: 4,
+    marginBottom: 2,
+    fontSize: 13,
   },
   descriptionInput: {
     height: 60,

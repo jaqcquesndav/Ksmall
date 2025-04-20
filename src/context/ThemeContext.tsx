@@ -9,7 +9,7 @@ const lightTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    primary: '#6200EE',
+    primary: '#1976D2', // Changé de #6200EE à #1976D2 (bleu)
   },
 };
 
@@ -17,7 +17,7 @@ const darkTheme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: '#BB86FC',
+    primary: '#1976D2', // Changé de #BB86FC à #1976D2 (bleu)
   },
 };
 
@@ -26,13 +26,13 @@ export const navigationDarkTheme = {
   ...NavigationDarkTheme,
   colors: {
     ...NavigationDarkTheme.colors,
-    primary: '#BB86FC',
+    primary: '#1976D2', // Changé de #BB86FC à #1976D2 (bleu)
   },
 };
 
 // Available theme colors
 export const themeColors = {
-  default: '#6200EE',
+  default: '#1976D2', // Changé de #6200EE à #1976D2 (bleu)
   blue: '#1976D2',
   green: '#388E3C',
   orange: '#F57C00',
