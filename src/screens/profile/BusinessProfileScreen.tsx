@@ -1,40 +1,90 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card, Title, Paragraph, Button, Avatar, Divider } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, Card, Title, Paragraph, Button, Avatar, Divider, useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../components/common/AppHeader';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../navigation/types';
+import logger from '../../utils/logger';
+import * as CompanyService from '../../services/CompanyService';
 
 const BusinessProfileScreen: React.FC = () => {
   const { t } = useTranslation();
+  const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   
-  // Sample business data - in a real app, this would come from a database or API
-  const businessData = {
+  const [loading, setLoading] = useState(true);
+  const [businessData, setBusinessData] = useState({
     name: 'KSmall Enterprise',
-    type: 'SARL',
+    legalForm: 'SARL',
     industry: 'Technology',
     taxId: 'FR123456789',
     email: 'contact@ksmall.com',
     phone: '+225 01 23 45 67 89',
+    website: 'www.ksmall.com',
+    foundedYear: '2020',
+    employees: '12',
     address: {
       street: '25 Avenue des Technologies',
       city: 'Abidjan',
       zipCode: '00225',
       country: 'Côte d\'Ivoire',
     },
-    website: 'www.ksmall.com',
-    foundedYear: 2020,
-    employees: 12,
     logo: null // URL would go here in real implementation
+  });
+  
+  // Charger les données de l'entreprise au chargement de l'écran
+  useEffect(() => {
+    loadCompanyData();
+  }, []);
+
+  // Récupérer les données de l'entreprise depuis la base de données
+  const loadCompanyData = async () => {
+    try {
+      setLoading(true);
+      const companyInfo = await CompanyService.getCompanyInfo();
+      
+      if (companyInfo) {
+        setBusinessData({
+          name: companyInfo.name || 'Mon Entreprise',
+          legalForm: companyInfo.legalForm || 'Non défini',
+          industry: 'Technology', // Information actuellement non stockée dans CompanyInfo
+          taxId: companyInfo.taxId || 'Non défini',
+          email: companyInfo.email || 'Non défini',
+          phone: companyInfo.phone || 'Non défini',
+          website: companyInfo.website || 'Non défini',
+          foundedYear: companyInfo.creationDate || 'Non défini',
+          employees: companyInfo.employeeCount?.toString() || '0',
+          address: {
+            street: companyInfo.address?.street || 'Non défini',
+            city: companyInfo.address?.city || 'Non défini',
+            zipCode: companyInfo.address?.postalCode || 'Non défini',
+            country: companyInfo.address?.country || 'Non défini',
+          },
+          logo: companyInfo.logo || null
+        });
+      }
+    } catch (error) {
+      logger.error('Erreur lors du chargement des données d\'entreprise:', error);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Fonction pour naviguer vers l'écran d'édition
   const handleEditProfile = () => {
-    navigation.navigate('BusinessProfileEdit'); // Nouvelle route à créer
+    navigation.navigate('BusinessProfileEdit');
   };
+  
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>{t('loading')}</Text>
+      </View>
+    );
+  }
   
   return (
     <View style={styles.container}>
@@ -52,7 +102,7 @@ const BusinessProfileScreen: React.FC = () => {
         <Card style={styles.card}>
           <Card.Content>
             <Title style={styles.businessName}>{businessData.name}</Title>
-            <Paragraph style={styles.businessType}>{businessData.type} • {businessData.industry}</Paragraph>
+            <Paragraph style={styles.businessType}>{businessData.legalForm}</Paragraph>
             
             <Divider style={styles.divider} />
             
@@ -163,6 +213,16 @@ const styles = StyleSheet.create({
   editButton: {
     marginHorizontal: 16,
     marginBottom: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
 });
 

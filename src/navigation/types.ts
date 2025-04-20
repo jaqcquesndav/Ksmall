@@ -76,7 +76,7 @@ export type MainStackParamList = {
   LanguageSettings: undefined;
   HelpSupport: undefined;
   About: undefined;
-  MapSelector: { onSelect: (location: any) => void };
+  MapSelector: { eventId?: string };
   
   // Subscription and billing
   Subscriptions: undefined;

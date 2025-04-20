@@ -4,13 +4,14 @@ import * as CompanyService from './CompanyService';
 import AccountingService from './AccountingService';
 import CurrencyService from './CurrencyService';
 import { getRecentTransactionsForDashboard } from '../data/transactionsMockData';
+import MockDataService from './MockDataService';
 
 /**
  * Service pour synchroniser les données comptables avec le dashboard
  */
 class DashboardAccountingService {
   // Variable pour suivre si nous utilisons un compte de démonstration
-  private isDemoAccount: boolean = false;
+  private isDemoAccount: boolean = true; // Par défaut en mode démo
   
   /**
    * Définit si le service doit utiliser les données de démonstration
@@ -206,6 +207,12 @@ class DashboardAccountingService {
    */
   async calculateCreditScore() {
     try {
+      // En mode démo, utiliser le service MockDataService
+      if (this.isDemoAccount) {
+        return await MockDataService.getCreditScore();
+      }
+      
+      // Sinon, calculer le score en fonction des métriques financières
       const metrics = await this.getFinancialMetrics();
       const balances = await this.getDashboardBalances();
       
@@ -247,6 +254,11 @@ class DashboardAccountingService {
    */
   async getESGRating() {
     try {
+      // En mode démo, utiliser le service MockDataService
+      if (this.isDemoAccount) {
+        return await MockDataService.getESGRating();
+      }
+      
       const db = await DatabaseService.getDBConnection();
       
       // Chercher d'abord dans les métriques utilisateur
@@ -272,7 +284,14 @@ class DashboardAccountingService {
    * Met à jour la cote de crédit en fonction des dernières données comptables
    */
   async updateCreditScore() {
-    return this.calculateCreditScore();
+    // En mode démo, déléguer au service MockDataService
+    if (this.isDemoAccount) {
+      const newScore = await this.calculateCreditScore();
+      await MockDataService.updateCreditScore(newScore);
+      return newScore;
+    } else {
+      return this.calculateCreditScore();
+    }
   }
   
   /**

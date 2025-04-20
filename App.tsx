@@ -64,6 +64,9 @@ export default function App() {
         // Initialiser les transactions mock pour les tests
         await AccountingService.initializeMockTransactions();
         
+        // Initialiser la base de données pour le profil d'entreprise
+        await DatabaseService.initializeDatabase();
+        
         logger.info(`Application initialized successfully in ${global.__DEMO_MODE__ ? 'DEMO' : 'ONLINE'} mode`);
       } catch (error) {
         // En cas d'erreur d'initialisation, activer le mode démo

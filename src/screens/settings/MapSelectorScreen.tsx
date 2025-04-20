@@ -9,17 +9,16 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../navigation/types';
 import logger from '../../utils/logger';
 import useOrientation from '../../hooks/useOrientation';
+import eventEmitter from '../../utils/EventEmitter';
 
 type MapSelectorScreenProps = NativeStackScreenProps<MainStackParamList, 'MapSelector'>;
 
 const MapSelectorScreen: React.FC<MapSelectorScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
-  const { initialLocation, onLocationSelected, title = t('select_location') } = route.params;
+  const { eventId = 'locationSelected' } = route.params || {};
   const { isLandscape, dimensions } = useOrientation();
 
-  const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(
-    initialLocation || null
-  );
+  const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number }>({
     latitude: -1.6777, // Goma, République Démocratique du Congo
@@ -65,8 +64,8 @@ const MapSelectorScreen: React.FC<MapSelectorScreenProps> = ({ route, navigation
 
   const handleConfirm = () => {
     if (selectedLocation) {
-      // Appeler la callback fournie par le parent avec les coordonnées sélectionnées
-      onLocationSelected(selectedLocation);
+      // Au lieu d'utiliser un callback, on émet un événement avec les coordonnées
+      eventEmitter.emit(eventId, selectedLocation);
       navigation.goBack();
     }
   };
@@ -80,7 +79,7 @@ const MapSelectorScreen: React.FC<MapSelectorScreenProps> = ({ route, navigation
 
   return (
     <View style={styles.container}>
-      <AppHeader title={title} showBack />
+      <AppHeader title={t('select_location')} showBack />
 
       <MapView
         style={[

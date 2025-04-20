@@ -19,7 +19,8 @@ import {
   DataTable,
   Divider,
   IconButton,
-  Menu
+  Menu,
+  ActivityIndicator
 } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +30,16 @@ import AppHeader from '../../components/common/AppHeader';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../navigation/types';
 import useOrientation from '../../hooks/useOrientation';
+import * as CompanyService from '../../services/CompanyService';
+import { CompanyInfo } from '../../services/CompanyService';
+import eventEmitter from '../../utils/EventEmitter';
+
+// Interface pour les données de localisation reçues via l'EventEmitter
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  description?: string;
+}
 
 type BusinessProfileScreenProps = NativeStackScreenProps<MainStackParamList, 'BusinessProfile'>;
 
@@ -100,11 +111,12 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
   const { isLandscape, dimensions } = useOrientation();
   
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<string>('info');
   const [showAssociateMenu, setShowAssociateMenu] = useState(false);
   const [selectedAssociate, setSelectedAssociate] = useState<number | null>(null);
   
-  const [formData, setFormData] = useState<BusinessFormData>({
+  const defaultFormData: BusinessFormData = {
     name: user?.company || '',
     logo: null,
     legalForm: 'individual',
@@ -135,18 +147,145 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
       // Par défaut, l'utilisateur actuel est un associé
       {
         name: user?.displayName || '',
-        contribution: 0,
+        contribution: 1000,
         percentage: 100, // Propriétaire unique par défaut
         role: 'owner'
       }
     ]
-  });
+  };
+
+  const [formData, setFormData] = useState<BusinessFormData>(defaultFormData);
+  
+  useEffect(() => {
+    loadCompanyInfo();
+  }, []);
+
+  const loadCompanyInfo = async () => {
+    try {
+      setInitialLoading(true);
+      const companyInfo = await CompanyService.getCompanyInfo();
+      
+      if (companyInfo) {
+        setFormData({
+          name: companyInfo.name || defaultFormData.name,
+          logo: companyInfo.logo || null,
+          legalForm: companyInfo.legalForm || defaultFormData.legalForm,
+          taxNumber: companyInfo.taxId || '',
+          idNat: companyInfo.idNat || '',
+          rccm: companyInfo.registrationNumber || '',
+          cnssNumber: companyInfo.cnssNumber || '',
+          inppNumber: companyInfo.inppNumber || '',
+          patent: companyInfo.patentNumber || '',
+          employeeCount: companyInfo.employeeCount || 1,
+          creationDate: companyInfo.creationDate || '',
+          address: {
+            street: companyInfo.address?.street || '',
+            city: companyInfo.address?.city || '',
+            postalCode: companyInfo.address?.postalCode || '',
+            country: companyInfo.address?.country || '',
+            coordinates: { latitude: null, longitude: null }
+          },
+          locations: {
+            headquarters: companyInfo.locations?.headquarters 
+              ? { 
+                  latitude: companyInfo.locations.headquarters.latitude || null, 
+                  longitude: companyInfo.locations.headquarters.longitude || null,
+                  description: companyInfo.locations.headquarters.description || '' 
+                }
+              : defaultFormData.locations.headquarters,
+            salesPoints: companyInfo.locations?.salesPoints?.map(point => ({
+              id: Date.now().toString() + Math.random().toString(),
+              name: point.name,
+              latitude: point.latitude,
+              longitude: point.longitude,
+              description: point.description || ''
+            })) || [],
+            productionSites: companyInfo.locations?.productionSites?.map(site => ({
+              id: Date.now().toString() + Math.random().toString(),
+              name: site.name,
+              latitude: site.latitude,
+              longitude: site.longitude,
+              description: site.description || ''
+            })) || []
+          },
+          phoneNumber: companyInfo.phone || '',
+          email: companyInfo.email || '',
+          website: companyInfo.website || '',
+          associates: companyInfo.associates?.map(associate => ({
+            name: associate.name,
+            contribution: associate.contribution,
+            percentage: associate.percentage,
+            role: associate.role
+          })) || defaultFormData.associates
+        });
+        
+        logger.debug('Profil d\'entreprise chargé');
+      }
+    } catch (error) {
+      logger.error('Erreur lors du chargement du profil d\'entreprise:', error);
+      Alert.alert(t('error'), t('error_loading_profile'));
+    } finally {
+      setInitialLoading(false);
+    }
+  };
   
   const handleSave = async () => {
     setLoading(true);
     try {
-      // Sauvegarder les données dans SQLite
-      // À implémenter avec un service dédié pour les profils d'entreprise
+      // Convertir BusinessFormData en CompanyInfo
+      const companyInfo: CompanyInfo = {
+        name: formData.name,
+        legalForm: formData.legalForm,
+        registrationNumber: formData.rccm,
+        taxId: formData.taxNumber,
+        idNat: formData.idNat,
+        cnssNumber: formData.cnssNumber,
+        inppNumber: formData.inppNumber,
+        patentNumber: formData.patent,
+        phone: formData.phoneNumber,
+        email: formData.email,
+        website: formData.website,
+        logo: formData.logo,
+        creationDate: formData.creationDate,
+        employeeCount: formData.employeeCount,
+        address: {
+          street: formData.address.street,
+          city: formData.address.city,
+          postalCode: formData.address.postalCode,
+          country: formData.address.country
+        },
+        locations: {
+          headquarters: formData.locations.headquarters.latitude && formData.locations.headquarters.longitude 
+            ? {
+                latitude: formData.locations.headquarters.latitude,
+                longitude: formData.locations.headquarters.longitude,
+                description: formData.locations.headquarters.description
+              }
+            : undefined,
+          salesPoints: formData.locations.salesPoints
+            .filter(point => point.latitude !== null && point.longitude !== null)
+            .map(point => ({
+              name: point.name,
+              latitude: point.latitude!,
+              longitude: point.longitude!,
+              description: point.description
+            })),
+          productionSites: formData.locations.productionSites
+            .filter(site => site.latitude !== null && site.longitude !== null)
+            .map(site => ({
+              name: site.name,
+              latitude: site.latitude!,
+              longitude: site.longitude!,
+              description: site.description
+            }))
+        },
+        associates: formData.associates,
+        // Ajouter l'ID de l'utilisateur actuel pour éviter l'erreur de constraint
+        userId: user?.id?.toString() || ''
+      };
+      
+      // Utiliser saveCompanyInfo au lieu de updateCompanyInfo
+      await CompanyService.saveCompanyInfo(companyInfo);
       
       Alert.alert(t('success'), t('business_profile_updated'));
     } catch (error) {
@@ -197,7 +336,6 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
   
   const removeAssociate = (index: number) => {
     if (index === 0) {
-      // Ne pas supprimer le propriétaire principal
       Alert.alert(t('error'), t('cannot_remove_primary_owner'));
       return;
     }
@@ -205,7 +343,6 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
     const newAssociates = [...formData.associates];
     newAssociates.splice(index, 1);
     
-    // Recalculer les pourcentages
     const totalContribution = newAssociates.reduce((sum, associate) => sum + associate.contribution, 0);
     
     if (totalContribution > 0) {
@@ -224,7 +361,6 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
     const newAssociates = [...formData.associates];
     newAssociates[index].contribution = contribution;
     
-    // Recalculer les pourcentages
     const totalContribution = newAssociates.reduce((sum, associate) => sum + associate.contribution, 0);
     
     if (totalContribution > 0) {
@@ -437,12 +573,30 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
         mode="outlined"
         icon="map-marker"
         onPress={() => {
-          // Ouvrir un écran pour sélectionner la position sur une carte
-          Alert.alert(t('feature_coming_soon'));
+          // Créer un ID d'événement unique pour cette sélection
+          const eventId = `location_headquarters_${Date.now()}`;
+          
+          // S'abonner à l'événement de sélection de localisation une seule fois
+          const unsubscribe = eventEmitter.once<LocationData>(eventId, (location) => {
+            setFormData({
+              ...formData,
+              locations: {
+                ...formData.locations,
+                headquarters: { 
+                  ...formData.locations.headquarters, 
+                  latitude: location.latitude,
+                  longitude: location.longitude
+                }
+              }
+            });
+          });
+          
+          // Naviguer vers MapSelector avec l'ID d'événement
+          navigation.navigate('MapSelector', { eventId });
         }}
         style={styles.locationButton}
       >
-        {t('set_location')}
+        {t('select_on_map')}
       </Button>
     </View>
   );
@@ -520,7 +674,6 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
                       leadingIcon="pencil"
                       onPress={() => {
                         setShowAssociateMenu(false);
-                        // Vous pourriez ouvrir un modal pour l'édition complète ici
                       }}
                     />
                     <Menu.Item
@@ -530,7 +683,7 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
                         setShowAssociateMenu(false);
                         removeAssociate(index);
                       }}
-                      disabled={index === 0} // Désactiver la suppression pour le propriétaire principal
+                      disabled={index === 0}
                     />
                   </Menu>
                 )}
@@ -612,14 +765,12 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
         <Button
           mode="outlined"
           icon="map-marker"
-          onPress={() => navigation.navigate('MapSelector', {
-            initialLocation: formData.locations.headquarters.latitude && formData.locations.headquarters.longitude 
-              ? {
-                  latitude: formData.locations.headquarters.latitude,
-                  longitude: formData.locations.headquarters.longitude
-                }
-              : null,
-            onLocationSelected: (location) => {
+          onPress={() => {
+            // Créer un ID d'événement unique pour cette sélection
+            const eventId = `location_headquarters_map_${Date.now()}`;
+            
+            // S'abonner à l'événement de sélection de localisation une seule fois
+            const unsubscribe = eventEmitter.once<LocationData>(eventId, (location) => {
               setFormData({
                 ...formData,
                 locations: {
@@ -631,9 +782,11 @@ const BusinessProfileScreen: React.FC<BusinessProfileScreenProps> = ({ navigatio
                   }
                 }
               });
-            },
-            title: t('select_headquarters_location')
-          })}
+            });
+            
+            // Naviguer vers MapSelector avec l'ID d'événement
+            navigation.navigate('MapSelector', { eventId });
+          }}
           style={styles.locationButton}
         >
           {t('select_on_map')}
