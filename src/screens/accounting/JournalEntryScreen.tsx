@@ -17,6 +17,7 @@ import Chip from '../../components/common/Chip';
 import SearchBar from '../../components/common/SearchBar';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '../../hooks/useCurrency';
+import useOrientation from '../../hooks/useOrientation';
 
 // Interface pour les filtres exportables
 interface JournalFilter {
@@ -32,6 +33,7 @@ const JournalEntryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { t } = useTranslation();
   const { formatAmount } = useCurrency();
+  const { orientation } = useOrientation();
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -434,7 +436,7 @@ const JournalEntryScreen: React.FC = () => {
   };
   
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, orientation === 'landscape' ? styles.containerLandscape : {}]}>
       <AppHeader 
         title="Journal Comptable SYSCOHADA" 
         onBack={() => navigation.goBack()}
@@ -634,6 +636,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  containerLandscape: {
+    flexDirection: 'row',
   },
   headerActions: {
     flexDirection: 'row',

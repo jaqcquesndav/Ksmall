@@ -67,6 +67,10 @@ export default function App() {
         // Initialiser la base de données pour le profil d'entreprise
         await DatabaseService.initializeDatabase();
         
+        // Importer UserService et s'assurer que le profil utilisateur existe
+        const UserService = require('./src/services/UserService').default;
+        await UserService.ensureUserProfile();
+        
         logger.info(`Application initialized successfully in ${global.__DEMO_MODE__ ? 'DEMO' : 'ONLINE'} mode`);
       } catch (error) {
         // En cas d'erreur d'initialisation, activer le mode démo

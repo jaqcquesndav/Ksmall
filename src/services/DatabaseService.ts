@@ -85,12 +85,87 @@ class DatabaseService {
   }
 
   /**
+   * Ajouter une colonne à une table si elle n'existe pas déjà
+   * @param db Instance de la base de données
+   * @param tableName Nom de la table
+   * @param columnName Nom de la colonne
+   * @param columnType Type de la colonne
+   */
+  static async addColumnIfNotExists(
+    db: SQLite.WebSQLDatabase,
+    tableName: string,
+    columnName: string,
+    columnType: string
+  ): Promise<void> {
+    try {
+      // Vérifier si la colonne existe déjà
+      const [pragmaResult] = await this.executeQuery(
+        db,
+        `PRAGMA table_info(${tableName})`,
+        []
+      );
+
+      let columnExists = false;
+      
+      for (let i = 0; i < pragmaResult.rows.length; i++) {
+        const column = pragmaResult.rows.item(i);
+        if (column.name === columnName) {
+          columnExists = true;
+          break;
+        }
+      }
+      
+      if (!columnExists) {
+        // La colonne n'existe pas, l'ajouter
+        await this.executeQuery(
+          db,
+          `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnType}`,
+          []
+        );
+        logger.info(`Colonne ${columnName} ajoutée à la table ${tableName}`);
+      } else {
+        logger.debug(`Colonne ${columnName} existe déjà dans la table ${tableName}`);
+      }
+    } catch (error) {
+      logger.error(`Erreur lors de l'ajout de la colonne ${columnName} à la table ${tableName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exécuter les migrations nécessaires de la base de données
+   */
+  static async runMigrations(): Promise<void> {
+    try {
+      const db = await this.getDatabase();
+      
+      // Vérifier si la table company_profile existe
+      const [tableCheck] = await this.executeQuery(
+        db,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='company_profile'",
+        []
+      );
+      
+      if (tableCheck?.rows?.length > 0) {
+        // Ajouter la colonne user_id à la table company_profile si elle n'existe pas déjà
+        await this.addColumnIfNotExists(db, 'company_profile', 'user_id', 'TEXT');
+      }
+      
+      logger.info('Migrations de base de données exécutées avec succès');
+    } catch (error) {
+      logger.error('Erreur lors de l\'exécution des migrations de base de données:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Initialiser la base de données (méthode de compatibilité avec App.tsx)
    */
   static async initDatabase(): Promise<void> {
     try {
       await this.initializeDatabase();
-      logger.info('Base de données initialisée');
+      await this.runMigrations();
+      logger.info('Base de données initialisée et migrée avec succès');
     } catch (error) {
       logger.error('Erreur lors de l\'initialisation de la base de données:', error);
       throw error;
@@ -142,6 +217,43 @@ class DatabaseService {
         address_city TEXT,
         address_postal_code TEXT,
         address_country TEXT,
+        user_id TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+      );
+
+      // Créer la table user_profile si elle n'existe pas
+      await this.createTableIfNotExists(
+        db,
+        'user_profile',
+        `id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        display_name TEXT,
+        email TEXT,
+        phone_number TEXT,
+        photo_url TEXT,
+        language TEXT,
+        theme TEXT,
+        preferences TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+      );
+      
+      // Créer la table subscription si elle n'existe pas
+      await this.createTableIfNotExists(
+        db,
+        'subscription',
+        `id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        plan_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        payment_method TEXT,
+        payment_id TEXT,
+        price REAL,
+        currency TEXT,
+        auto_renew INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
       );
 

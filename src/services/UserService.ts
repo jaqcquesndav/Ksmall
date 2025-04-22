@@ -118,6 +118,15 @@ class UserService {
       
       await DatabaseService.executeQuery(db, query, values);
       
+      // Synchroniser avec la table user_profile
+      await this.syncUserProfileTable(currentUser.id, {
+        display_name: updates.displayName || currentUser.displayName,
+        email: updates.email || currentUser.email,
+        phone_number: updates.phoneNumber || currentUser.phoneNumber,
+        photo_url: updates.photoURL || currentUser.photoURL,
+        language: updates.language || currentUser.language
+      });
+      
       // Obtenir l'utilisateur mis à jour
       const updatedUser = await this.getCurrentUser();
       
@@ -130,6 +139,52 @@ class UserService {
     } catch (error) {
       console.error('Error updating user profile', error);
       return null;
+    }
+  }
+  
+  // Synchroniser les tables users et user_profile
+  private async syncUserProfileTable(userId: string, userData: any): Promise<void> {
+    try {
+      const db = await DatabaseService.getDBConnection();
+      
+      // Vérifier si l'utilisateur existe déjà dans user_profile
+      const [checkResult] = await DatabaseService.executeQuery(
+        db,
+        "SELECT id FROM user_profile WHERE user_id = ?",
+        [userId]
+      );
+      
+      if (checkResult?.rows?.length > 0) {
+        // Mettre à jour le profil existant
+        const fields = Object.keys(userData);
+        const values = Object.values(userData);
+        
+        // Ajouter l'ID utilisateur à la fin pour la clause WHERE
+        values.push(userId);
+        
+        await DatabaseService.executeQuery(
+          db,
+          `UPDATE user_profile SET 
+            ${fields.map(f => `${f} = ?`).join(', ')},
+            updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?`,
+          values
+        );
+      } else {
+        // Créer un nouveau profil utilisateur
+        const fields = ['user_id', ...Object.keys(userData)];
+        const values = [userId, ...Object.values(userData)];
+        const placeholders = fields.map(() => '?').join(', ');
+        
+        await DatabaseService.executeQuery(
+          db,
+          `INSERT INTO user_profile (${fields.join(', ')})
+           VALUES (${placeholders})`,
+          values
+        );
+      }
+    } catch (error) {
+      console.error('Error syncing user_profile table', error);
     }
   }
   
@@ -191,6 +246,28 @@ class UserService {
   onUserUpdated(callback: (user: User) => void): () => void {
     this.eventEmitter.on('userUpdated', callback);
     return () => this.eventEmitter.off('userUpdated', callback);
+  }
+
+  // Assurer qu'un profil utilisateur existe pour l'utilisateur courant
+  async ensureUserProfile(): Promise<boolean> {
+    try {
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser) return false;
+      
+      // Synchroniser avec la table user_profile
+      await this.syncUserProfileTable(currentUser.id, {
+        display_name: currentUser.displayName,
+        email: currentUser.email,
+        phone_number: currentUser.phoneNumber,
+        photo_url: currentUser.photoURL,
+        language: currentUser.language
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error ensuring user profile exists', error);
+      return false;
+    }
   }
 }
 

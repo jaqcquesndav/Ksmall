@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Text, Button, Card, RadioButton, List, useTheme, Divider, FAB, Snackbar } from 'react-native-paper';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -12,6 +12,9 @@ import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
 import CurrencyAmount from '../../components/common/CurrencyAmount';
 import { useCurrency } from '../../hooks/useCurrency';
+
+// Type pour l'orientation de l'écran
+type Orientation = 'portrait' | 'landscape';
 
 interface Report {
   id: string;
@@ -28,6 +31,35 @@ const FinancialStatementsScreen: React.FC = () => {
   const theme = useTheme();
   const { formatAmount } = useCurrency();
   
+  // État pour stocker l'orientation actuelle
+  const [orientation, setOrientation] = useState<Orientation>(
+    getOrientation()
+  );
+  
+  // Fonction pour déterminer l'orientation selon les dimensions
+  function getOrientation(): Orientation {
+    const { width, height } = Dimensions.get('window');
+    return width > height ? 'landscape' : 'portrait';
+  }
+  
+  // Effet pour surveiller les changements d'orientation
+  useEffect(() => {
+    // Fonction de callback pour mettre à jour l'orientation
+    const updateOrientation = () => {
+      setOrientation(getOrientation());
+    };
+    
+    // S'abonner aux événements de changement de dimensions
+    const dimensionsListener = Dimensions.addEventListener('change', updateOrientation);
+    
+    // Nettoyage lors du démontage du composant
+    return () => {
+      dimensionsListener.remove();
+    };
+  }, []);
+  
+  const isLandscape = orientation === 'landscape';
+  
   const [selectedReportType, setSelectedReportType] = useState<'bilan' | 'compte_resultat' | 'balance' | 'tresorerie'>('bilan');
   const [startDate, setStartDate] = useState<Date>(startOfMonth(subMonths(new Date(), 1)));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
@@ -42,7 +74,7 @@ const FinancialStatementsScreen: React.FC = () => {
   
   useEffect(() => {
     // Initialiser les tables comptables si nécessaire
-    DatabaseService.initAccountingTables().catch(error => {
+    DatabaseService.getDBConnection().catch(error => {
       logger.error('Erreur lors de l\'initialisation des tables comptables:', error);
     });
     
@@ -174,6 +206,154 @@ const FinancialStatementsScreen: React.FC = () => {
     }
   };
   
+  const renderNewReportContent = () => {
+    return (
+      <Card style={styles.card}>
+        <Card.Content>
+          <Text style={styles.sectionTitle}>Type de rapport</Text>
+          
+          {isLandscape ? (
+            // Layout horizontal pour le mode paysage
+            <View style={styles.reportTypeContainerLandscape}>
+              <RadioButton.Group
+                onValueChange={value => setSelectedReportType(value as any)}
+                value={selectedReportType}
+              >
+                <View style={styles.radioRowContainer}>
+                  <View style={styles.radioItemLandscape}>
+                    <RadioButton.Item
+                      label="Bilan"
+                      value="bilan"
+                      labelStyle={styles.radioLabel}
+                    />
+                  </View>
+                  <View style={styles.radioItemLandscape}>
+                    <RadioButton.Item
+                      label="Compte de résultat"
+                      value="compte_resultat"
+                      labelStyle={styles.radioLabel}
+                    />
+                  </View>
+                  <View style={styles.radioItemLandscape}>
+                    <RadioButton.Item
+                      label="Balance des comptes"
+                      value="balance"
+                      labelStyle={styles.radioLabel}
+                    />
+                  </View>
+                  <View style={styles.radioItemLandscape}>
+                    <RadioButton.Item
+                      label="Flux de trésorerie"
+                      value="tresorerie"
+                      labelStyle={styles.radioLabel}
+                    />
+                  </View>
+                </View>
+              </RadioButton.Group>
+            </View>
+          ) : (
+            // Layout vertical pour le mode portrait
+            <RadioButton.Group
+              onValueChange={value => setSelectedReportType(value as any)}
+              value={selectedReportType}
+            >
+              <View style={styles.radioContainer}>
+                <RadioButton.Item
+                  label="Bilan"
+                  value="bilan"
+                  labelStyle={styles.radioLabel}
+                />
+                <RadioButton.Item
+                  label="Compte de résultat"
+                  value="compte_resultat"
+                  labelStyle={styles.radioLabel}
+                />
+                <RadioButton.Item
+                  label="Balance des comptes"
+                  value="balance"
+                  labelStyle={styles.radioLabel}
+                />
+                <RadioButton.Item
+                  label="Tableau des flux de trésorerie"
+                  value="tresorerie"
+                  labelStyle={styles.radioLabel}
+                />
+              </View>
+            </RadioButton.Group>
+          )}
+
+          <Divider style={styles.divider} />
+          
+          <Text style={styles.sectionTitle}>Période</Text>
+          
+          <View style={isLandscape ? styles.dateContainerLandscape : styles.dateContainerPortrait}>
+            <View style={isLandscape ? { flex: 1, marginRight: 10 } : undefined}>
+              <TouchableOpacity 
+                style={styles.dateSelector}
+                onPress={() => setShowStartDatePicker(true)}
+              >
+                <Ionicons 
+                  name="calendar-outline" 
+                  size={24} 
+                  color={theme.colors.primary} 
+                />
+                <View style={styles.dateTextContainer}>
+                  <Text style={styles.dateLabel}>Du</Text>
+                  <Text style={styles.dateValue}>{formatDate(startDate)}</Text>
+                </View>
+              </TouchableOpacity>
+              
+              {showStartDatePicker && (
+                <DateTimePickerModal
+                  isVisible={showStartDatePicker}
+                  mode="date"
+                  onConfirm={date => handleStartDateChange(null, date)}
+                  onCancel={() => setShowStartDatePicker(false)}
+                />
+              )}
+            </View>
+            
+            <View style={isLandscape ? { flex: 1, marginLeft: 10 } : undefined}>
+              <TouchableOpacity 
+                style={styles.dateSelector}
+                onPress={() => setShowEndDatePicker(true)}
+              >
+                <Ionicons 
+                  name="calendar-outline" 
+                  size={24} 
+                  color={theme.colors.primary} 
+                />
+                <View style={styles.dateTextContainer}>
+                  <Text style={styles.dateLabel}>Au</Text>
+                  <Text style={styles.dateValue}>{formatDate(endDate)}</Text>
+                </View>
+              </TouchableOpacity>
+              
+              {showEndDatePicker && (
+                <DateTimePickerModal
+                  isVisible={showEndDatePicker}
+                  mode="date"
+                  onConfirm={date => handleEndDateChange(null, date)}
+                  onCancel={() => setShowEndDatePicker(false)}
+                />
+              )}
+            </View>
+          </View>
+          
+          <Button
+            mode="contained"
+            onPress={generateReport}
+            style={styles.generateButton}
+            loading={generating}
+            disabled={generating}
+          >
+            Générer le rapport
+          </Button>
+        </Card.Content>
+      </Card>
+    );
+  };
+  
   return (
     <View style={styles.container}>
       <AppHeader title="États Financiers SYSCOHADA" onBack={() => navigation.goBack()} />
@@ -187,99 +367,7 @@ const FinancialStatementsScreen: React.FC = () => {
             onPress={() => setExpandedSection(expandedSection === 'new' ? 'saved' : 'new')}
             titleStyle={{ fontWeight: 'bold' }}
           >
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.sectionTitle}>Type de rapport</Text>
-                <RadioButton.Group
-                  onValueChange={value => setSelectedReportType(value as any)}
-                  value={selectedReportType}
-                >
-                  <View style={styles.radioContainer}>
-                    <RadioButton.Item
-                      label="Bilan"
-                      value="bilan"
-                      labelStyle={styles.radioLabel}
-                    />
-                    <RadioButton.Item
-                      label="Compte de résultat"
-                      value="compte_resultat"
-                      labelStyle={styles.radioLabel}
-                    />
-                    <RadioButton.Item
-                      label="Balance des comptes"
-                      value="balance"
-                      labelStyle={styles.radioLabel}
-                    />
-                    <RadioButton.Item
-                      label="Tableau des flux de trésorerie"
-                      value="tresorerie"
-                      labelStyle={styles.radioLabel}
-                    />
-                  </View>
-                </RadioButton.Group>
-
-                <Divider style={styles.divider} />
-                
-                <Text style={styles.sectionTitle}>Période</Text>
-                <TouchableOpacity 
-                  style={styles.dateSelector}
-                  onPress={() => setShowStartDatePicker(true)}
-                >
-                  <Ionicons 
-                    name="calendar-outline" 
-                    size={24} 
-                    color={theme.colors.primary} 
-                  />
-                  <View style={styles.dateTextContainer}>
-                    <Text style={styles.dateLabel}>Du</Text>
-                    <Text style={styles.dateValue}>{formatDate(startDate)}</Text>
-                  </View>
-                </TouchableOpacity>
-                
-                {showStartDatePicker && (
-                  <DateTimePickerModal
-                    isVisible={showStartDatePicker}
-                    mode="date"
-                    onConfirm={date => handleStartDateChange(null, date)}
-                    onCancel={() => setShowStartDatePicker(false)}
-                  />
-                )}
-                
-                <TouchableOpacity 
-                  style={styles.dateSelector}
-                  onPress={() => setShowEndDatePicker(true)}
-                >
-                  <Ionicons 
-                    name="calendar-outline" 
-                    size={24} 
-                    color={theme.colors.primary} 
-                  />
-                  <View style={styles.dateTextContainer}>
-                    <Text style={styles.dateLabel}>Au</Text>
-                    <Text style={styles.dateValue}>{formatDate(endDate)}</Text>
-                  </View>
-                </TouchableOpacity>
-                
-                {showEndDatePicker && (
-                  <DateTimePickerModal
-                    isVisible={showEndDatePicker}
-                    mode="date"
-                    onConfirm={date => handleEndDateChange(null, date)}
-                    onCancel={() => setShowEndDatePicker(false)}
-                  />
-                )}
-                
-                <Button
-                  mode="contained"
-                  onPress={generateReport}
-                  style={styles.generateButton}
-                  loading={generating}
-                  disabled={generating}
-                >
-                  Générer le rapport
-                </Button>
-              </Card.Content>
-            </Card>
+            {renderNewReportContent()}
           </List.Accordion>
           
           <List.Accordion
@@ -303,50 +391,52 @@ const FinancialStatementsScreen: React.FC = () => {
                 </Card.Content>
               </Card>
             ) : (
-              savedReports.map(report => (
-                <Card
-                  key={report.id}
-                  style={styles.reportCard}
-                >
-                  <Card.Title
-                    title={report.title}
-                    subtitle={`Du ${format(new Date(report.startDate), 'dd/MM/yyyy')} au ${format(new Date(report.endDate), 'dd/MM/yyyy')}`}
-                    left={props => <Ionicons name="document-text-outline" size={30} color={theme.colors.primary} />}
-                  />
-                  <Card.Content>
-                    <Text variant="bodySmall" style={styles.reportType}>
-                      {getReportTypeLabel(report.type)}
-                    </Text>
-                    <Text variant="bodySmall" style={styles.reportDate}>
-                      Créé le {format(new Date(report.createdAt), 'dd/MM/yyyy à HH:mm')}
-                    </Text>
-                  </Card.Content>
-                  <Card.Actions>
-                    <Button 
-                      onPress={() => shareReport(report.filePath)}
-                      icon="share-variant"
-                    >
-                      Partager
-                    </Button>
-                    <Button 
-                      onPress={() => {
-                        Alert.alert(
-                          'Supprimer le rapport',
-                          'Êtes-vous sûr de vouloir supprimer ce rapport ?',
-                          [
-                            { text: 'Annuler', style: 'cancel' },
-                            { text: 'Supprimer', onPress: () => deleteReport(report.id) }
-                          ]
-                        );
-                      }}
-                      icon="delete"
-                      textColor={theme.colors.error}
-                    >
-                      Supprimer
-                    </Button>
-                  </Card.Actions>
-                </Card>
-              ))
+              <View style={isLandscape ? styles.savedReportsGridLandscape : undefined}>
+                {savedReports.map(report => (
+                  <Card
+                    key={report.id}
+                    style={[styles.reportCard, isLandscape && styles.reportCardLandscape]}
+                  >
+                    <Card.Title
+                      title={report.title}
+                      subtitle={`Du ${format(new Date(report.startDate), 'dd/MM/yyyy')} au ${format(new Date(report.endDate), 'dd/MM/yyyy')}`}
+                      left={props => <Ionicons name="document-text-outline" size={30} color={theme.colors.primary} />}
+                    />
+                    <Card.Content>
+                      <Text variant="bodySmall" style={styles.reportType}>
+                        {getReportTypeLabel(report.type)}
+                      </Text>
+                      <Text variant="bodySmall" style={styles.reportDate}>
+                        Créé le {format(new Date(report.createdAt), 'dd/MM/yyyy à HH:mm')}
+                      </Text>
+                    </Card.Content>
+                    <Card.Actions>
+                      <Button 
+                        onPress={() => shareReport(report.filePath)}
+                        icon="share-variant"
+                      >
+                        Partager
+                      </Button>
+                      <Button 
+                        onPress={() => {
+                          Alert.alert(
+                            'Supprimer le rapport',
+                            'Êtes-vous sûr de vouloir supprimer ce rapport ?',
+                            [
+                              { text: 'Annuler', style: 'cancel' },
+                              { text: 'Supprimer', onPress: () => deleteReport(report.id) }
+                            ]
+                          );
+                        }}
+                        icon="delete"
+                        textColor={theme.colors.error}
+                      >
+                        Supprimer
+                      </Button>
+                    </Card.Actions>
+                  </Card>
+                ))}
+              </View>
             )}
           </List.Accordion>
         </List.Section>
@@ -393,11 +483,32 @@ const styles = StyleSheet.create({
   radioContainer: {
     marginLeft: -8,
   },
+  reportTypeContainerLandscape: {
+    flexDirection: 'row',
+  },
+  radioRowContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  radioItemLandscape: {
+    flexBasis: '48%',
+    marginBottom: 8,
+  },
   radioLabel: {
     fontSize: 16,
   },
   divider: {
     marginVertical: 16,
+  },
+  dateContainerPortrait: {
+    marginBottom: 8,
+  },
+  dateContainerLandscape: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   dateSelector: {
     flexDirection: 'row',
@@ -425,8 +536,17 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  savedReportsGridLandscape: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   reportCard: {
     marginVertical: 8,
+  },
+  reportCardLandscape: {
+    width: '49%',
+    marginHorizontal: 0.5,
   },
   reportType: {
     marginBottom: 4,

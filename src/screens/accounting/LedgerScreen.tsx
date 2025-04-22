@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import useOrientation from '../../hooks/useOrientation';
 
 import AppHeader from '../../components/common/AppHeader';
 import EmptyState from '../../components/common/EmptyState';
@@ -47,6 +48,7 @@ const LedgerScreen: React.FC = () => {
   const navigation = useNavigation();
   const theme = useTheme();
   const { t } = useTranslation();
+  const { orientation } = useOrientation();
   
   // États pour les filtres et la recherche
   const [searchQuery, setSearchQuery] = useState('');
@@ -515,7 +517,7 @@ const LedgerScreen: React.FC = () => {
 
   // Rendu du composant principal
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, orientation === 'landscape' ? styles.containerLandscape : {}]}>
       <AppHeader 
         title={t('general_ledger')} 
         onBack={() => navigation.goBack()}
@@ -649,6 +651,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  containerLandscape: {
+    paddingHorizontal: 20,
   },
   filtersContainer: {
     backgroundColor: '#fff',

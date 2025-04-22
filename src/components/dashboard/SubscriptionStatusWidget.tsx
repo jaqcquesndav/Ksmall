@@ -27,13 +27,15 @@ interface SubscriptionStatusWidgetProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   isLandscape?: boolean;
+  style?: any; // Ajout de la propriété style
 }
 
 const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({ 
   subscriptionData,
   collapsed: externalCollapsed,
   onToggleCollapse,
-  isLandscape
+  isLandscape,
+  style
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -91,7 +93,7 @@ const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
   };
 
   return (
-    <Card style={[styles.card, isLandscape && styles.cardLandscape]}>
+    <Card style={[styles.card, isLandscape && styles.cardLandscape, style]}>
       <Card.Content>
         <View style={styles.header}>
           <Text style={styles.title}>{t('subscription')}</Text>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, FlatList } from 'react-native';
 import { Text, List, Avatar, Divider } from 'react-native-paper';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,6 +21,7 @@ interface Transaction {
 
 interface RecentTransactionsWidgetProps {
   transactions: Transaction[];
+  isLandscape?: boolean; // Ajout de la prop pour détecter le mode paysage
 }
 
 // Type pour les noms d'icônes de MaterialCommunityIcons
@@ -29,7 +30,10 @@ type MaterialCommunityIconName = React.ComponentProps<typeof MaterialCommunityIc
 /**
  * Composant pour afficher les transactions récentes sur le dashboard
  */
-const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ transactions }) => {
+const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ 
+  transactions, 
+  isLandscape = false 
+}) => {
   const navigation = useNavigation<any>();
   const { formatAmount, currency } = useCurrency();
 
@@ -87,6 +91,57 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ tra
     });
   };
 
+  // Rendu d'un élément de transaction
+  const renderTransactionItem = ({ item: transaction, index }: { item: Transaction, index: number }) => {
+    const journalName = getTreasuryJournalName(transaction);
+    
+    return (
+      <React.Fragment>
+        <List.Item
+          title={transaction.description}
+          description={() => (
+            <View>
+              <Text>{`${formatDate(transaction.date)} • ${transaction.reference || 'Sans référence'}`}</Text>
+              {journalName && (
+                <Text style={styles.journalName}>Journal: {journalName}</Text>
+              )}
+            </View>
+          )}
+          left={props => (
+            <Avatar.Icon 
+              {...props} 
+              icon={() => (
+                <MaterialCommunityIcons 
+                  name={getAccountIcon(transaction.account)} 
+                  size={24} 
+                  color="white"
+                />
+              )}
+              style={{backgroundColor: getAccountColor(transaction.account)}}
+            />
+          )}
+          right={props => (
+            <View style={styles.amountContainer}>
+              <Text style={[
+                styles.amount,
+                transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount
+              ]}>
+                {formatAmount(transaction.amount)}
+              </Text>
+              <Text style={styles.status}>
+                {transaction.status === 'posted' ? 'Validé' : 
+                 transaction.status === 'pending' ? 'En attente' : 'Annulé'}
+              </Text>
+            </View>
+          )}
+          onPress={() => handleTransactionPress(transaction.id)}
+          style={[styles.listItem, isLandscape && styles.listItemLandscape]}
+        />
+        {index < transactions.length - 1 && <Divider style={styles.divider} />}
+      </React.Fragment>
+    );
+  };
+
   // Si pas de transactions, afficher un message
   if (!transactions || transactions.length === 0) {
     return (
@@ -96,6 +151,34 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({ tra
     );
   }
 
+  // En mode paysage, utiliser FlatList pour une mise en page plus optimisée
+  if (isLandscape) {
+    return (
+      <View style={[styles.container, styles.containerLandscape]}>
+        <FlatList
+          data={transactions}
+          renderItem={renderTransactionItem}
+          keyExtractor={item => item.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.flatListContentLandscape}
+        />
+        
+        <View style={styles.viewAllContainer}>
+          <Text 
+            style={styles.viewAll}
+            onPress={() => navigation.navigate('MainTabs', { 
+              screen: 'Accounting',
+              params: { screen: 'JournalEntry' }
+            })}
+          >
+            Voir toutes les transactions
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Mode portrait - Affichage standard
   return (
     <View style={styles.container}>
       {transactions.map((transaction, index) => {
@@ -167,8 +250,21 @@ const styles = StyleSheet.create({
   container: {
     marginTop: 8,
   },
+  containerLandscape: {
+    flex: 1,
+    paddingHorizontal: 4,
+  },
+  flatListContentLandscape: {
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
   listItem: {
     paddingLeft: 0,
+  },
+  listItemLandscape: {
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    marginVertical: 2,
   },
   divider: {
     marginVertical: 4,
