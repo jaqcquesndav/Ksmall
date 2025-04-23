@@ -1,223 +1,133 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, SafeAreaView, Animated, Dimensions } from 'react-native';
-import { useTheme, Surface, Text, TouchableRipple, Divider, Badge } from 'react-native-paper';
+import React from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, useTheme, Avatar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { MainTabsParamList } from './types';
-import UserService from '../services/UserService';
+import { useTranslation } from 'react-i18next';
+
+interface TabRoute {
+  name: keyof MainTabsParamList;
+  title: string;
+  iconName: string;
+  component: React.ComponentType<any>;
+  listeners?: any;
+}
 
 interface SidebarProps {
-  tabRoutes: Array<{
-    name: keyof MainTabsParamList;
-    title: string;
-    iconName: string;
-    component: React.ComponentType<any>;
-    listeners?: (props: { navigation: any }) => { tabPress: (e: any) => void };
-  }>;
+  tabRoutes: TabRoute[];
   currentTab: keyof MainTabsParamList;
   onChangeTab: (tabName: keyof MainTabsParamList) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({
-  tabRoutes,
-  currentTab,
-  onChangeTab,
-}) => {
+const Sidebar: React.FC<SidebarProps> = ({ tabRoutes, currentTab, onChangeTab }) => {
   const theme = useTheme();
-  const [notificationCount, setNotificationCount] = useState<number>(0);
-  const screenWidth = Dimensions.get('window').width;
-  const screenHeight = Dimensions.get('window').height;
-  const sidebarWidth = Math.min(Math.max(screenWidth * 0.15, 80), 120); // 15% de la largeur, min 80px, max 120px
+  const { t } = useTranslation();
   
-  // Animation pour l'apparition de la sidebar
-  const [slideAnim] = useState(new Animated.Value(-sidebarWidth));
-  const [fadeAnim] = useState(new Animated.Value(0));
-  
-  // Récupérer le nombre de notifications non lues
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const count = await UserService.getUnreadNotificationsCount();
-        setNotificationCount(count);
-      } catch (error) {
-        console.error("Erreur lors de la récupération des notifications:", error);
-      }
-    };
-    
-    fetchNotifications();
-  }, []);
-  
-  // Animation lors du montage du composant
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    
-    return () => {
-      // Animation de sortie si nécessaire
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    };
-  }, []);
-
   return (
-    <Animated.View
-      style={[
-        styles.sidebarContainer,
-        {
-          width: sidebarWidth,
-          transform: [{ translateX: slideAnim }],
-          opacity: fadeAnim,
-        }
-      ]}
-    >
-      <Surface style={[styles.sidebar, { backgroundColor: theme.colors.elevation.level2 }]} elevation={4}>
-        <SafeAreaView style={styles.sidebarContent}>
-          <View style={styles.sidebarHeader}>
-            <Text style={[styles.appTitle, { color: theme.colors.primary }]}>KSmall</Text>
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-          <View style={styles.sidebarNav}>
-            {tabRoutes.map((route, index) => {
-              const isFocused = currentTab === route.name;
-              const iconName = route.iconName;
-              
-              // Afficher un badge pour les notifications
-              const showBadge = route.name === 'Chat' && notificationCount > 0;
-              
-              return (
-                <TouchableRipple
-                  key={`tab-${route.name}`}
-                  onPress={() => onChangeTab(route.name)}
-                  style={[
-                    styles.sidebarItem,
-                    { height: Math.min(screenHeight / 6, 80) },
-                    isFocused && { 
-                      backgroundColor: theme.colors.primaryContainer,
-                      borderLeftWidth: 4,
-                      borderLeftColor: theme.colors.primary,
-                    }
-                  ]}
-                >
-                  <View style={styles.sidebarItemContent}>
-                    <View style={styles.iconContainer}>
-                      <Icon
-                        name={iconName}
-                        size={24}
-                        color={isFocused ? theme.colors.primary : theme.colors.outline}
-                      />
-                      {showBadge && (
-                        <Badge
-                          size={16}
-                          style={styles.badge}
-                        >
-                          {notificationCount}
-                        </Badge>
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.sidebarItemLabel,
-                        { 
-                          color: isFocused ? theme.colors.primary : theme.colors.outline,
-                          fontSize: sidebarWidth < 100 ? 10 : 12,
-                        }
-                      ]}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {route.title}
-                    </Text>
-                  </View>
-                </TouchableRipple>
-              );
-            })}
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-          <View style={styles.sidebarFooter}>
-            <Text style={styles.versionText}>v1.0.0</Text>
-          </View>
-        </SafeAreaView>
-      </Surface>
-    </Animated.View>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <Avatar.Text 
+          size={64} 
+          label="KS" 
+          style={styles.avatar}
+          labelStyle={{ fontSize: 24 }}
+        />
+        <Text style={styles.appName}>KSmall</Text>
+      </View>
+      
+      <ScrollView style={styles.navContainer}>
+        {tabRoutes.map(route => (
+          <TouchableOpacity
+            key={route.name}
+            style={[
+              styles.navItem,
+              currentTab === route.name && 
+                { backgroundColor: theme.colors.primaryContainer }
+            ]}
+            onPress={() => onChangeTab(route.name)}
+          >
+            <Icon 
+              name={route.iconName} 
+              size={24} 
+              color={currentTab === route.name ? theme.colors.primary : theme.colors.outline} 
+            />
+            <Text 
+              style={[
+                styles.navLabel, 
+                { color: currentTab === route.name ? theme.colors.primary : theme.colors.onSurface }
+              ]}
+            >
+              {route.title}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.footerButton}>
+          <Icon name="help-circle-outline" size={20} color={theme.colors.outline} />
+          <Text style={[styles.footerText, { color: theme.colors.outline }]}>{t('help')}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.footerButton}>
+          <Icon name="information-outline" size={20} color={theme.colors.outline} />
+          <Text style={[styles.footerText, { color: theme.colors.outline }]}>{t('about')}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  sidebarContainer: {
+  container: {
+    width: 280,
     height: '100%',
-    zIndex: 10,
+    borderRightWidth: 1,
+    borderRightColor: '#e0e0e0',
   },
-  sidebar: {
-    height: '100%',
-    width: '100%',
-  },
-  sidebarContent: {
-    flex: 1,
-    justifyContent: 'flex-start',
-  },
-  sidebarHeader: {
-    height: 60,
-    justifyContent: 'center',
+  header: {
+    padding: 20,
+    paddingTop: 40,
     alignItems: 'center',
-    paddingTop: 8,
+    justifyContent: 'center',
   },
-  appTitle: {
+  avatar: {
+    marginBottom: 16,
+  },
+  appName: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#fff',
   },
-  sidebarNav: {
+  navContainer: {
     flex: 1,
-    paddingTop: 10,
+    paddingTop: 16,
   },
-  sidebarItem: {
-    justifyContent: 'center',
+  navItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 4,
-    marginVertical: 2,
+    padding: 16,
+    paddingLeft: 24,
+    marginBottom: 4,
   },
-  sidebarItemContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingHorizontal: 4,
-  },
-  iconContainer: {
-    position: 'relative',
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-  },
-  sidebarItemLabel: {
-    marginTop: 6,
-    textAlign: 'center',
+  navLabel: {
+    marginLeft: 24,
+    fontSize: 16,
     fontWeight: '500',
   },
-  sidebarFooter: {
-    paddingVertical: 10,
-    alignItems: 'center',
+  footer: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
-  versionText: {
-    fontSize: 10,
-    opacity: 0.6,
+  footerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  footerText: {
+    marginLeft: 12,
+    fontSize: 14,
   }
 });
 

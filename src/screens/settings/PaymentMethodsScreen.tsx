@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { 
   Button, 
   Card, 
   Text, 
-  List, 
   IconButton, 
   Portal, 
   Modal,
@@ -12,67 +11,209 @@ import {
   SegmentedButtons,
   Surface,
   RadioButton,
-  Divider
+  HelperText,
+  Divider,
+  Menu,
+  useTheme
 } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../components/common/AppHeader';
 import { useAuth } from '../../context/AuthContext';
 import logger from '../../utils/logger';
-import { useCurrency } from '../../hooks/useCurrency';
-import CurrencyAmount from '../../components/common/CurrencyAmount';
+
+// Define the payment method types
+interface BasePaymentMethod {
+  id: string;
+  isDefault: boolean;
+}
+
+interface MobileMoneyPayment extends BasePaymentMethod {
+  type: 'mobile_money';
+  provider: 'Airtel Money' | 'Orange Money' | 'M-Pesa';
+  number: string;
+}
+
+interface BankCardPayment extends BasePaymentMethod {
+  type: 'bank';
+  bank: string;
+  cardNetwork: 'VISA' | 'Mastercard';
+  cardNumber: string;
+  expiryDate: string;
+  // CVV is not stored for security reasons
+}
+
+type PaymentMethod = MobileMoneyPayment | BankCardPayment;
 
 const PaymentMethodsScreen: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { formatAmount } = useCurrency();
-  const [paymentMethods, setPaymentMethods] = useState([
-    { id: '1', type: 'mobile_money', provider: 'M-Pesa', number: '+243 XXX XXX XXX', isDefault: true },
-    { id: '2', type: 'bank', name: 'Rawbank', accountNumber: '**** 5678', isDefault: false },
+  const theme = useTheme();
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
+    { 
+      id: '1', 
+      type: 'mobile_money', 
+      provider: 'M-Pesa', 
+      number: '+243 XXX XXX XXX', 
+      isDefault: true 
+    },
+    { 
+      id: '2', 
+      type: 'bank', 
+      bank: 'RAWBANK', 
+      cardNetwork: 'VISA', 
+      cardNumber: '**** **** **** 5678', 
+      expiryDate: '12/26', 
+      isDefault: false 
+    },
   ]);
   
-  const [subscriptionPlans] = useState([
-    { id: 'basic', name: t('basic_plan'), price: 15, tokens: 500000 },
-    { id: 'pro', name: t('pro_plan'), price: 29, tokens: 1000000, isCurrent: true },
-    { id: 'business', name: t('business_plan'), price: 49, tokens: 2000000 },
-  ]);
-  
-  const [subscriptionAddons] = useState([
-    { id: 'bonus_tokens', name: t('monthly_token_bonus'), description: t('bonus_description'), price: 10, tokens: 1000000 }
-  ]);
-  
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
-  const [showConfirmCodeModal, setShowConfirmCodeModal] = useState(false);
+  const [paymentType, setPaymentType] = useState<'mobile_money' | 'bank'>('mobile_money');
   
-  const [selectedPlan, setSelectedPlan] = useState(subscriptionPlans.find(p => p.isCurrent)?.id || '');
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(paymentMethods.find(p => p.isDefault)?.id || '');
-  const [paymentType, setPaymentType] = useState('mobile_money');
-  const [newPaymentData, setNewPaymentData] = useState({ provider: '', number: '' });
-  const [confirmationCode, setConfirmationCode] = useState('');
+  // Mobile Money form state
+  const [mobileMoneyProvider, setMobileMoneyProvider] = useState<'Airtel Money' | 'Orange Money' | 'M-Pesa'>('M-Pesa');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [pinCode, setPinCode] = useState('');
+  const [showMobileProviderMenu, setShowMobileProviderMenu] = useState(false);
+  
+  // Bank payment form state
+  const [selectedBank, setSelectedBank] = useState('RAWBANK');
+  const [cardNetwork, setCardNetwork] = useState<'VISA' | 'Mastercard'>('VISA');
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [showBankMenu, setShowBankMenu] = useState(false);
+  
+  // Form errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const bankOptions = ['EQUITYBCDC', 'RAWBANK', 'ECOBANK', 'SMICO', 'TMB', 'Autre'];
+
+  // References for menu buttons - corrected types for TouchableOpacity
+  const mobileProviderRef = useRef<TouchableOpacity>(null);
+  const bankSelectorRef = useRef<TouchableOpacity>(null);
+  const [mobileProviderPosition, setMobileProviderPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [bankSelectorPosition, setBankSelectorPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+
+  // Function to measure the position of the mobile provider selector
+  const measureMobileProviderButton = () => {
+    mobileProviderRef.current?.measure((x, y, width, height, pageX, pageY) => {
+      setMobileProviderPosition({ x: pageX, y: pageY, width, height });
+    });
+  };
+
+  // Function to measure the position of the bank selector
+  const measureBankSelectorButton = () => {
+    bankSelectorRef.current?.measure((x, y, width, height, pageX, pageY) => {
+      setBankSelectorPosition({ x: pageX, y: pageY, width, height });
+    });
+  };
+  
+  const validateMobileMoneyForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    // Validate phone number (simple validation for now)
+    if (!phoneNumber) {
+      newErrors.phoneNumber = t('phone_number_required');
+    } else if (!phoneNumber.startsWith('+')) {
+      newErrors.phoneNumber = t('include_country_code');
+    }
+    
+    // PIN code validation
+    if (!pinCode) {
+      newErrors.pinCode = t('pin_required');
+    } else if (pinCode.length < 4) {
+      newErrors.pinCode = t('pin_too_short');
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+  
+  const validateBankForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    // Card number validation
+    if (!cardNumber) {
+      newErrors.cardNumber = t('card_number_required');
+    } else if (cardNumber.replace(/\s/g, '').length < 16) {
+      newErrors.cardNumber = t('invalid_card_number');
+    }
+    
+    // Expiry date validation (MM/YY format)
+    if (!expiryDate) {
+      newErrors.expiryDate = t('expiry_date_required');
+    } else if (!/^\d{2}\/\d{2}$/.test(expiryDate)) {
+      newErrors.expiryDate = t('invalid_expiry_format');
+    }
+    
+    // CVV validation
+    if (!cvv) {
+      newErrors.cvv = t('cvv_required');
+    } else if (!/^\d{3,4}$/.test(cvv)) {
+      newErrors.cvv = t('invalid_cvv');
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
   
   const handleAddPaymentMethod = () => {
+    // Validate form based on payment type
+    const isValid = paymentType === 'mobile_money' 
+      ? validateMobileMoneyForm() 
+      : validateBankForm();
+    
+    if (!isValid) return;
+    
     const newId = (Math.max(...paymentMethods.map(p => parseInt(p.id))) + 1).toString();
     
-    const newMethod = paymentType === 'mobile_money' 
-      ? { 
-          id: newId, 
-          type: 'mobile_money', 
-          provider: newPaymentData.provider, 
-          number: newPaymentData.number, 
-          isDefault: false 
-        }
-      : { 
-          id: newId, 
-          type: 'bank', 
-          name: newPaymentData.provider, 
-          accountNumber: newPaymentData.number, 
-          isDefault: false 
-        };
-        
+    let newMethod: PaymentMethod;
+    
+    if (paymentType === 'mobile_money') {
+      newMethod = {
+        id: newId,
+        type: 'mobile_money',
+        provider: mobileMoneyProvider,
+        number: phoneNumber,
+        isDefault: false
+      };
+    } else {
+      // Format card number to display only last 4 digits for storage
+      const maskedCardNumber = '**** **** **** ' + cardNumber.replace(/\s/g, '').slice(-4);
+      
+      newMethod = {
+        id: newId,
+        type: 'bank',
+        bank: selectedBank,
+        cardNetwork: cardNetwork,
+        cardNumber: maskedCardNumber,
+        expiryDate: expiryDate,
+        isDefault: false
+      };
+    }
+    
     setPaymentMethods([...paymentMethods, newMethod]);
+    resetForm();
     setShowAddPaymentModal(false);
-    setNewPaymentData({ provider: '', number: '' });
+  };
+  
+  const resetForm = () => {
+    // Reset mobile money form
+    setMobileMoneyProvider('M-Pesa');
+    setPhoneNumber('');
+    setPinCode('');
+    
+    // Reset bank payment form
+    setSelectedBank('RAWBANK');
+    setCardNetwork('VISA');
+    setCardNumber('');
+    setExpiryDate('');
+    setCvv('');
+    
+    // Clear errors
+    setErrors({});
   };
   
   const handleSetDefaultPaymentMethod = (id: string) => {
@@ -95,33 +236,38 @@ const PaymentMethodsScreen: React.FC = () => {
     
     setPaymentMethods(paymentMethods.filter(method => method.id !== id));
   };
-  
-  const handleSubscribe = () => {
-    setShowSubscribeModal(false);
-    setShowConfirmCodeModal(true);
-  };
-  
-  const handleConfirmPayment = () => {
-    if (confirmationCode.length < 6) {
-      Alert.alert(t('error'), t('invalid_confirmation_code'));
-      return;
+
+  // Format card number with spaces for display
+  const formatCardNumber = (text: string) => {
+    const cleaned = text.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const chunks = [];
+    
+    for (let i = 0; i < cleaned.length; i += 4) {
+      chunks.push(cleaned.substring(i, i + 4));
     }
     
-    // Here you would verify the code with your payment API
-    
-    Alert.alert(t('success'), t('subscription_confirmed'));
-    setShowConfirmCodeModal(false);
-    setConfirmationCode('');
+    return chunks.join(' ');
   };
-  
-  const calculateTotal = () => {
-    const planPrice = subscriptionPlans.find(p => p.id === selectedPlan)?.price || 0;
-    const addonsPrice = selectedAddons.reduce((total, addonId) => {
-      const addon = subscriptionAddons.find(a => a.id === addonId);
-      return total + (addon?.price || 0);
-    }, 0);
+
+  // Handle card number input with formatting
+  const handleCardNumberChange = (text: string) => {
+    const formatted = formatCardNumber(text);
+    if (formatted.replace(/\s/g, '').length <= 16) {
+      setCardNumber(formatted);
+    }
+  };
+
+  // Format expiry date with slash
+  const handleExpiryDateChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9]/gi, '');
     
-    return planPrice + addonsPrice;
+    if (cleaned.length <= 4) {
+      if (cleaned.length > 2) {
+        setExpiryDate(`${cleaned.substring(0, 2)}/${cleaned.substring(2)}`);
+      } else {
+        setExpiryDate(cleaned);
+      }
+    }
   };
 
   return (
@@ -132,30 +278,6 @@ const PaymentMethodsScreen: React.FC = () => {
       />
       
       <ScrollView style={styles.scrollView}>
-        <Card style={styles.card}>
-          <Card.Title title={t('subscription')} />
-          <Card.Content>
-            <View style={styles.subscriptionItem}>
-              <Text style={styles.currentPlanTitle}>{t('current_plan')}</Text>
-              <Text style={styles.currentPlan}>
-                {subscriptionPlans.find(p => p.isCurrent)?.name || t('no_active_plan')}
-              </Text>
-              
-              <Text style={styles.tokensInfo}>
-                {t('monthly_tokens')}: {(subscriptionPlans.find(p => p.isCurrent)?.tokens || 0).toLocaleString()}
-              </Text>
-              
-              <Button 
-                mode="contained" 
-                style={styles.manageButton}
-                onPress={() => setShowSubscribeModal(true)}
-              >
-                {t('manage_subscription')}
-              </Button>
-            </View>
-          </Card.Content>
-        </Card>
-        
         <Card style={styles.card}>
           <Card.Title 
             title={t('payment_methods')} 
@@ -171,17 +293,39 @@ const PaymentMethodsScreen: React.FC = () => {
             {paymentMethods.map(method => (
               <Surface key={method.id} style={styles.paymentMethodItem}>
                 <View style={styles.paymentMethodInfo}>
-                  <IconButton 
-                    icon={method.type === 'mobile_money' ? 'cellphone' : 'bank'} 
-                    size={24} 
-                  />
-                  <View>
+                  {method.type === 'mobile_money' ? (
+                    <MaterialCommunityIcons 
+                      name={
+                        method.provider === 'Airtel Money' ? 'cellphone-wireless' : 
+                        method.provider === 'Orange Money' ? 'cellphone-basic' : 
+                        'cellphone'
+                      } 
+                      size={24} 
+                      color={
+                        method.provider === 'Airtel Money' ? '#ff0000' : 
+                        method.provider === 'Orange Money' ? '#ff6600' : 
+                        '#27ae60'
+                      }
+                    />
+                  ) : (
+                    <MaterialCommunityIcons 
+                      name={method.cardNetwork === 'VISA' ? 'credit-card' : 'credit-card-outline'} 
+                      size={24} 
+                      color={method.cardNetwork === 'VISA' ? '#1A1F71' : '#EB001B'}
+                    />
+                  )}
+                  <View style={styles.paymentMethodTextInfo}>
                     <Text style={styles.paymentMethodTitle}>
-                      {method.type === 'mobile_money' ? method.provider : method.name}
+                      {method.type === 'mobile_money' ? method.provider : `${method.bank} ${method.cardNetwork}`}
                     </Text>
                     <Text style={styles.paymentMethodDetail}>
-                      {method.type === 'mobile_money' ? method.number : method.accountNumber}
+                      {method.type === 'mobile_money' ? method.number : method.cardNumber}
                     </Text>
+                    {method.type === 'bank' && (
+                      <Text style={styles.paymentMethodExtra}>
+                        {t('expires')}: {method.expiryDate}
+                      </Text>
+                    )}
                     {method.isDefault && (
                       <Text style={styles.defaultLabel}>{t('default')}</Text>
                     )}
@@ -214,198 +358,260 @@ const PaymentMethodsScreen: React.FC = () => {
         </Card>
       </ScrollView>
       
-      {/* Subscribe Modal */}
-      <Portal>
-        <Modal 
-          visible={showSubscribeModal} 
-          onDismiss={() => setShowSubscribeModal(false)}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <Text style={styles.modalTitle}>{t('manage_subscription')}</Text>
-          
-          <Text style={styles.modalSectionTitle}>{t('select_plan')}</Text>
-          <RadioButton.Group 
-            onValueChange={value => setSelectedPlan(value)} 
-            value={selectedPlan}
-          >
-            {subscriptionPlans.map(plan => (
-              <View key={plan.id} style={styles.planOption}>
-                <RadioButton.Item
-                  label={`${plan.name}`}
-                  value={plan.id}
-                />
-                <View style={styles.planPriceContainer}>
-                  <CurrencyAmount amount={plan.price} />
-                  <Text style={styles.perMonth}>/month</Text>
-                </View>
-                <Text style={styles.planTokens}>
-                  {plan.tokens.toLocaleString()} {t('tokens_per_month')}
-                </Text>
-              </View>
-            ))}
-          </RadioButton.Group>
-          
-          <Divider style={styles.divider} />
-          
-          <Text style={styles.modalSectionTitle}>{t('add_ons')}</Text>
-          {subscriptionAddons.map(addon => (
-            <View key={addon.id} style={styles.addonOption}>
-              <RadioButton.Item
-                label={`${addon.name}`}
-                value={addon.id}
-                status={selectedAddons.includes(addon.id) ? 'checked' : 'unchecked'}
-                onPress={() => {
-                  if (selectedAddons.includes(addon.id)) {
-                    setSelectedAddons(selectedAddons.filter(id => id !== addon.id));
-                  } else {
-                    setSelectedAddons([...selectedAddons, addon.id]);
-                  }
-                }}
-              />
-              <View style={styles.planPriceContainer}>
-                <CurrencyAmount amount={addon.price} />
-                <Text style={styles.perMonth}>/month</Text>
-              </View>
-              <Text style={styles.addonDescription}>{addon.description}</Text>
-            </View>
-          ))}
-          
-          <Divider style={styles.divider} />
-          
-          <Text style={styles.modalSectionTitle}>{t('payment_method')}</Text>
-          <RadioButton.Group 
-            onValueChange={value => setSelectedPaymentMethod(value)} 
-            value={selectedPaymentMethod}
-          >
-            {paymentMethods.map(method => (
-              <RadioButton.Item
-                key={method.id}
-                label={
-                  method.type === 'mobile_money' 
-                    ? `${method.provider} (${method.number})` 
-                    : `${method.name} (${method.accountNumber})`
-                }
-                value={method.id}
-              />
-            ))}
-          </RadioButton.Group>
-          
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalLabel}>{t('total')}</Text>
-            <View style={styles.totalAmountContainer}>
-              <CurrencyAmount amount={calculateTotal()} style={styles.totalAmount} />
-              <Text style={styles.perMonth}>/month</Text>
-            </View>
-          </View>
-          
-          <View style={styles.modalActions}>
-            <Button 
-              mode="outlined" 
-              onPress={() => setShowSubscribeModal(false)} 
-              style={styles.cancelButton}
-            >
-              {t('cancel')}
-            </Button>
-            <Button 
-              mode="contained" 
-              onPress={handleSubscribe}
-            >
-              {t('continue')}
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
-      
-      {/* Add Payment Method Modal */}
+      {/* Add Payment Method Modal - Fixed version */}
       <Portal>
         <Modal 
           visible={showAddPaymentModal} 
-          onDismiss={() => setShowAddPaymentModal(false)}
-          contentContainerStyle={styles.modalContainer}
+          onDismiss={() => {
+            setShowAddPaymentModal(false);
+            resetForm();
+          }}
+          contentContainerStyle={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}
         >
-          <Text style={styles.modalTitle}>{t('add_payment_method')}</Text>
-          
-          <SegmentedButtons
-            value={paymentType}
-            onValueChange={setPaymentType}
-            buttons={[
-              { value: 'mobile_money', label: t('mobile_money') },
-              { value: 'bank', label: t('bank') }
-            ]}
-            style={styles.segmentedButtons}
-          />
-          
-          <TextInput
-            label={paymentType === 'mobile_money' ? t('provider') : t('bank_name')}
-            value={newPaymentData.provider}
-            onChangeText={text => setNewPaymentData({...newPaymentData, provider: text})}
-            style={styles.input}
-          />
-          
-          <TextInput
-            label={paymentType === 'mobile_money' ? t('phone_number') : t('account_number')}
-            value={newPaymentData.number}
-            onChangeText={text => setNewPaymentData({...newPaymentData, number: text})}
-            style={styles.input}
-            keyboardType={paymentType === 'mobile_money' ? 'phone-pad' : 'default'}
-          />
-          
-          <View style={styles.modalActions}>
-            <Button 
-              mode="outlined" 
-              onPress={() => setShowAddPaymentModal(false)} 
-              style={styles.cancelButton}
-            >
-              {t('cancel')}
-            </Button>
-            <Button 
-              mode="contained" 
-              onPress={handleAddPaymentMethod}
-              disabled={!newPaymentData.provider || !newPaymentData.number}
-            >
-              {t('add')}
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
-      
-      {/* Confirmation Code Modal */}
-      <Portal>
-        <Modal 
-          visible={showConfirmCodeModal} 
-          onDismiss={() => setShowConfirmCodeModal(false)}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <Text style={styles.modalTitle}>{t('confirm_payment')}</Text>
-          
-          <Text style={styles.confirmationText}>
-            {t('enter_confirmation_code')}
-          </Text>
-          
-          <TextInput
-            label={t('confirmation_code')}
-            value={confirmationCode}
-            onChangeText={setConfirmationCode}
-            style={styles.input}
-            keyboardType="number-pad"
-          />
-          
-          <View style={styles.modalActions}>
-            <Button 
-              mode="outlined" 
-              onPress={() => setShowConfirmCodeModal(false)} 
-              style={styles.cancelButton}
-            >
-              {t('cancel')}
-            </Button>
-            <Button 
-              mode="contained" 
-              onPress={handleConfirmPayment}
-              disabled={confirmationCode.length < 6}
-            >
-              {t('confirm')}
-            </Button>
-          </View>
+          <ScrollView style={styles.modalScrollView}>
+            <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+              {t('add_payment_method')}
+            </Text>
+            
+            <SegmentedButtons
+              value={paymentType}
+              onValueChange={(value) => {
+                setPaymentType(value as 'mobile_money' | 'bank');
+                setErrors({});
+              }}
+              buttons={[
+                { value: 'mobile_money', label: t('mobile_money') },
+                { value: 'bank', label: t('bank_card') }
+              ]}
+              style={styles.segmentedButtons}
+            />
+            
+            {/* Mobile Money Form */}
+            {paymentType === 'mobile_money' && (
+              <View style={styles.formContainer}>
+                <View style={styles.selectContainer}>
+                  <Text style={styles.selectLabel}>{t('select_provider')}</Text>
+                  <TouchableOpacity
+                    ref={mobileProviderRef}
+                    style={styles.selectButton}
+                    onPress={() => {
+                      measureMobileProviderButton();
+                      setShowMobileProviderMenu(true);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons 
+                        name={
+                          mobileMoneyProvider === 'Airtel Money' ? 'cellphone-wireless' : 
+                          mobileMoneyProvider === 'Orange Money' ? 'cellphone-basic' : 
+                          'cellphone'
+                        } 
+                        size={20} 
+                        color={
+                          mobileMoneyProvider === 'Airtel Money' ? '#ff0000' : 
+                          mobileMoneyProvider === 'Orange Money' ? '#ff6600' : 
+                          '#27ae60'
+                        }
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text>{mobileMoneyProvider}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="menu-down" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Menu
+                  visible={showMobileProviderMenu}
+                  onDismiss={() => setShowMobileProviderMenu(false)}
+                  contentStyle={{ width: mobileProviderPosition.width }}
+                  anchor={{ x: mobileProviderPosition.x, y: mobileProviderPosition.y + mobileProviderPosition.height }}
+                >
+                  <Menu.Item
+                    title="Airtel Money"
+                    leadingIcon="cellphone-wireless"
+                    onPress={() => {
+                      setMobileMoneyProvider('Airtel Money');
+                      setShowMobileProviderMenu(false);
+                    }}
+                  />
+                  <Menu.Item
+                    title="Orange Money"
+                    leadingIcon="cellphone-basic"
+                    onPress={() => {
+                      setMobileMoneyProvider('Orange Money');
+                      setShowMobileProviderMenu(false);
+                    }}
+                  />
+                  <Menu.Item
+                    title="M-Pesa"
+                    leadingIcon="cellphone"
+                    onPress={() => {
+                      setMobileMoneyProvider('M-Pesa');
+                      setShowMobileProviderMenu(false);
+                    }}
+                  />
+                </Menu>
+                
+                <TextInput
+                  label={t('phone_number_with_code')}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  style={styles.input}
+                  keyboardType="phone-pad"
+                  placeholder="+243 XXXXXXXXX"
+                  error={!!errors.phoneNumber}
+                />
+                {errors.phoneNumber && <HelperText type="error">{errors.phoneNumber}</HelperText>}
+                
+                <TextInput
+                  label={t('pin_code')}
+                  value={pinCode}
+                  onChangeText={setPinCode}
+                  style={styles.input}
+                  keyboardType="numeric"
+                  secureTextEntry
+                  error={!!errors.pinCode}
+                  maxLength={6}
+                />
+                {errors.pinCode && <HelperText type="error">{errors.pinCode}</HelperText>}
+              </View>
+            )}
+            
+            {/* Bank Card Form */}
+            {paymentType === 'bank' && (
+              <View style={styles.formContainer}>
+                <View style={styles.selectContainer}>
+                  <Text style={styles.selectLabel}>{t('select_bank')}</Text>
+                  <TouchableOpacity
+                    ref={bankSelectorRef}
+                    style={styles.selectButton}
+                    onPress={() => {
+                      measureBankSelectorButton();
+                      setShowBankMenu(true);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="bank" size={20} color="#333" style={{ marginRight: 8 }} />
+                      <Text>{selectedBank}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="menu-down" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Menu
+                  visible={showBankMenu}
+                  onDismiss={() => setShowBankMenu(false)}
+                  contentStyle={{ width: bankSelectorPosition.width }}
+                  anchor={{ x: bankSelectorPosition.x, y: bankSelectorPosition.y + bankSelectorPosition.height }}
+                >
+                  {bankOptions.map((bank) => (
+                    <Menu.Item
+                      key={bank}
+                      title={bank}
+                      leadingIcon="bank"
+                      onPress={() => {
+                        setSelectedBank(bank);
+                        setShowBankMenu(false);
+                      }}
+                    />
+                  ))}
+                </Menu>
+                
+                <Text style={styles.sectionTitle}>{t('card_network')}</Text>
+                <View style={styles.radioRow}>
+                  <TouchableOpacity 
+                    style={[
+                      styles.cardNetworkOption, 
+                      cardNetwork === 'VISA' && styles.selectedCardNetwork
+                    ]}
+                    onPress={() => setCardNetwork('VISA')}
+                  >
+                    <MaterialCommunityIcons 
+                      name="credit-card" 
+                      size={30} 
+                      color={cardNetwork === 'VISA' ? "#1A1F71" : "#757575"} 
+                    />
+                    <Text style={styles.cardNetworkLabel}>VISA</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[
+                      styles.cardNetworkOption, 
+                      cardNetwork === 'Mastercard' && styles.selectedCardNetwork
+                    ]}
+                    onPress={() => setCardNetwork('Mastercard')}
+                  >
+                    <MaterialCommunityIcons 
+                      name="credit-card-outline" 
+                      size={30} 
+                      color={cardNetwork === 'Mastercard' ? "#EB001B" : "#757575"} 
+                    />
+                    <Text style={styles.cardNetworkLabel}>Mastercard</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <TextInput
+                  label={t('card_number')}
+                  value={cardNumber}
+                  onChangeText={handleCardNumberChange}
+                  style={styles.input}
+                  keyboardType="numeric"
+                  error={!!errors.cardNumber}
+                  maxLength={19} // 16 digits + 3 spaces
+                />
+                {errors.cardNumber && <HelperText type="error">{errors.cardNumber}</HelperText>}
+                
+                <View style={styles.rowInputs}>
+                  <View style={styles.halfInput}>
+                    <TextInput
+                      label={t('expiry_date')}
+                      value={expiryDate}
+                      onChangeText={handleExpiryDateChange}
+                      placeholder="MM/YY"
+                      style={styles.input}
+                      keyboardType="numeric"
+                      error={!!errors.expiryDate}
+                      maxLength={5} // MM/YY
+                    />
+                    {errors.expiryDate && <HelperText type="error">{errors.expiryDate}</HelperText>}
+                  </View>
+                  
+                  <View style={styles.halfInput}>
+                    <TextInput
+                      label="CVV"
+                      value={cvv}
+                      onChangeText={setCvv}
+                      style={styles.input}
+                      keyboardType="numeric"
+                      secureTextEntry
+                      error={!!errors.cvv}
+                      maxLength={4}
+                    />
+                    {errors.cvv && <HelperText type="error">{errors.cvv}</HelperText>}
+                  </View>
+                </View>
+              </View>
+            )}
+            
+            <View style={styles.modalActions}>
+              <Button 
+                mode="outlined" 
+                onPress={() => {
+                  setShowAddPaymentModal(false);
+                  resetForm();
+                }} 
+                style={styles.cancelButton}
+              >
+                {t('cancel')}
+              </Button>
+              <Button 
+                mode="contained" 
+                onPress={handleAddPaymentMethod}
+              >
+                {t('add')}
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </View>
@@ -424,31 +630,11 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 16,
   },
-  subscriptionItem: {
-    marginBottom: 8,
-  },
-  currentPlanTitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  currentPlan: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  tokensInfo: {
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  manageButton: {
-    marginTop: 8,
-  },
   paymentMethodItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
     marginBottom: 12,
     elevation: 1,
@@ -457,6 +643,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  paymentMethodTextInfo: {
+    marginLeft: 12,
+  },
   paymentMethodTitle: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -464,6 +653,11 @@ const styles = StyleSheet.create({
   paymentMethodDetail: {
     fontSize: 14,
     color: '#666',
+  },
+  paymentMethodExtra: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
   },
   paymentMethodActions: {
     flexDirection: 'row',
@@ -479,98 +673,98 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   modalContainer: {
-    backgroundColor: 'white',
-    padding: 20,
     margin: 20,
     borderRadius: 8,
+    maxHeight: '80%',
+    width: '90%',
+    alignSelf: 'center',
+    elevation: 5,
+  },
+  modalScrollView: {
+    padding: 20,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 20,
   },
+  formContainer: {
+    marginTop: 10,
+  },
   input: {
-    marginBottom: 16,
+    marginBottom: 12,
     backgroundColor: 'transparent',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 20,
+    marginBottom: 10,
   },
   cancelButton: {
     marginRight: 10,
   },
-  modalSectionTitle: {
+  segmentedButtons: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 8,
+    fontWeight: '500',
+    marginTop: 16,
     marginBottom: 12,
   },
-  planOption: {
-    marginBottom: 8,
+  radioRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
-  planTokens: {
+  cardNetworkOption: {
+    borderWidth: 1,
+    borderColor: '#dddddd',
+    borderRadius: 8,
+    padding: 15,
+    alignItems: 'center',
+    width: '48%',
+  },
+  selectedCardNetwork: {
+    borderColor: '#6200ee',
+    backgroundColor: 'rgba(98, 0, 238, 0.08)',
+  },
+  cardNetworkLabel: {
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  rowInputs: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  halfInput: {
+    width: '48%',
+  },
+  selectContainer: {
+    marginBottom: 20,
+  },
+  selectLabel: {
     fontSize: 12,
     color: '#666',
-    marginLeft: 30,
-    marginTop: -8,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  addonOption: {
-    marginVertical: 4,
-  },
-  addonDescription: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 30,
-    marginTop: -8,
-    marginBottom: 8,
-  },
-  totalContainer: {
+  selectButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderWidth: 1,
+    borderColor: '#dddddd',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
   },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  providerMenu: {
+    marginTop: -20,
   },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#6200EE',
-  },
-  segmentedButtons: {
-    marginBottom: 16,
-  },
-  divider: {
-    marginVertical: 16,
-  },
-  confirmationText: {
-    marginBottom: 16,
-  },
-  planPriceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 30,
-    marginTop: -8,
-    marginBottom: 8,
-  },
-  perMonth: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 4,
-  },
-  totalAmountContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  bankMenu: {
+    marginTop: -20,
   },
 });
 

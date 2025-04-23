@@ -99,32 +99,30 @@ class DatabaseService {
   ): Promise<void> {
     try {
       // Vérifier si la colonne existe déjà
-      const [pragmaResult] = await this.executeQuery(
+      const [result] = await this.executeQuery(
         db,
         `PRAGMA table_info(${tableName})`,
         []
       );
-
-      let columnExists = false;
       
-      for (let i = 0; i < pragmaResult.rows.length; i++) {
-        const column = pragmaResult.rows.item(i);
-        if (column.name === columnName) {
-          columnExists = true;
-          break;
+      let columnExists = false;
+      if (result && result.rows && result.rows.length > 0) {
+        for (let i = 0; i < result.rows.length; i++) {
+          if (result.rows.item(i).name === columnName) {
+            columnExists = true;
+            break;
+          }
         }
       }
       
+      // Ajouter la colonne si elle n'existe pas
       if (!columnExists) {
-        // La colonne n'existe pas, l'ajouter
         await this.executeQuery(
           db,
           `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnType}`,
           []
         );
-        logger.info(`Colonne ${columnName} ajoutée à la table ${tableName}`);
-      } else {
-        logger.debug(`Colonne ${columnName} existe déjà dans la table ${tableName}`);
+        logger.debug(`Colonne ${columnName} ajoutée à la table ${tableName}`);
       }
     } catch (error) {
       logger.error(`Erreur lors de l'ajout de la colonne ${columnName} à la table ${tableName}:`, error);
@@ -151,9 +149,46 @@ class DatabaseService {
         await this.addColumnIfNotExists(db, 'company_profile', 'user_id', 'TEXT');
       }
       
+      // Migrer la table user_profile
+      await this.migrateUserProfileTable();
+      
       logger.info('Migrations de base de données exécutées avec succès');
     } catch (error) {
       logger.error('Erreur lors de l\'exécution des migrations de base de données:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Migrer la table user_profile pour ajouter les colonnes manquantes
+   */
+  static async migrateUserProfileTable(): Promise<void> {
+    try {
+      const db = await this.getDatabase();
+      
+      // Vérifier si la table user_profile existe
+      const [tableExists] = await this.executeQuery(
+        db,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='user_profile'",
+        []
+      );
+      
+      if (!tableExists || tableExists.rows.length === 0) {
+        // La table n'existe pas encore, elle sera créée correctement lors de l'initialisation
+        logger.debug("La table user_profile n'existe pas encore, pas besoin de migration");
+        return;
+      }
+      
+      // Ajouter les colonnes nécessaires
+      await this.addColumnIfNotExists(db, 'user_profile', 'display_name', 'TEXT');
+      await this.addColumnIfNotExists(db, 'user_profile', 'email', 'TEXT');
+      await this.addColumnIfNotExists(db, 'user_profile', 'phone_number', 'TEXT');
+      await this.addColumnIfNotExists(db, 'user_profile', 'photo_url', 'TEXT');
+      await this.addColumnIfNotExists(db, 'user_profile', 'language', 'TEXT');
+      
+      logger.info("Migration de la table user_profile terminée avec succès");
+    } catch (error) {
+      logger.error("Erreur lors de la migration de la table user_profile:", error);
       throw error;
     }
   }

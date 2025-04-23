@@ -58,6 +58,9 @@ export default function App() {
         // Initialize database when the app starts
         await DatabaseService.initDatabase();
         
+        // Run database migrations (this includes the user_profile table fix)
+        await DatabaseService.runMigrations();
+        
         // Mettre à jour les transactions existantes pour calculer le total
         await DatabaseService.updateTransactionsWithTotal();
         
