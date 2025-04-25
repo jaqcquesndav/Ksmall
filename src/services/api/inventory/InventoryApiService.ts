@@ -80,6 +80,23 @@ export interface StorageLocation {
 }
 
 /**
+ * Interface pour un fournisseur
+ */
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  website?: string;
+  taxId?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Options pour la récupération des produits
  */
 export interface GetProductsOptions {
@@ -541,6 +558,144 @@ class InventoryApiService {
       );
     } catch (error) {
       logger.error('Erreur lors de l\'importation des produits', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère la liste des fournisseurs
+   */
+  async getSuppliers(): Promise<Supplier[]> {
+    try {
+      return await ApiService.get<Supplier[]>(
+        `${InventoryApiService.BASE_PATH}/suppliers`
+      );
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des fournisseurs', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère un fournisseur par ID
+   */
+  async getSupplierById(id: string): Promise<Supplier> {
+    try {
+      return await ApiService.get<Supplier>(
+        `${InventoryApiService.BASE_PATH}/suppliers/${id}`
+      );
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération du fournisseur ${id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Crée un nouveau fournisseur
+   */
+  async createSupplier(supplier: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt'>): Promise<Supplier> {
+    try {
+      return await ApiService.post<Supplier>(
+        `${InventoryApiService.BASE_PATH}/suppliers`,
+        supplier
+      );
+    } catch (error) {
+      logger.error('Erreur lors de la création du fournisseur', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Met à jour un fournisseur existant
+   */
+  async updateSupplier(id: string, supplier: Partial<Supplier>): Promise<Supplier> {
+    try {
+      return await ApiService.put<Supplier>(
+        `${InventoryApiService.BASE_PATH}/suppliers/${id}`,
+        supplier
+      );
+    } catch (error) {
+      logger.error(`Erreur lors de la mise à jour du fournisseur ${id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Supprime un fournisseur
+   */
+  async deleteSupplier(id: string): Promise<boolean> {
+    try {
+      await ApiService.delete(
+        `${InventoryApiService.BASE_PATH}/suppliers/${id}`
+      );
+      return true;
+    } catch (error) {
+      logger.error(`Erreur lors de la suppression du fournisseur ${id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère les produits d'un fournisseur
+   */
+  async getSupplierProducts(supplierId: string): Promise<Product[]> {
+    try {
+      return await ApiService.get<Product[]>(
+        `${InventoryApiService.BASE_PATH}/suppliers/${supplierId}/products`
+      );
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération des produits du fournisseur ${supplierId}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère les alertes de stock bas
+   */
+  async getLowStockAlerts(threshold?: number): Promise<Product[]> {
+    try {
+      const params: Record<string, any> = {};
+      if (threshold) params.threshold = threshold;
+      
+      return await ApiService.get<Product[]>(
+        `${InventoryApiService.BASE_PATH}/alerts/low-stock`,
+        params
+      );
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des alertes de stock bas', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyse la rotation des stocks
+   */
+  async getStockTurnover(options: { startDate?: string; endDate?: string; productId?: string }): Promise<any> {
+    try {
+      return await ApiService.get<any>(
+        `${InventoryApiService.BASE_PATH}/analytics/turnover`,
+        options
+      );
+    } catch (error) {
+      logger.error('Erreur lors de l\'analyse de la rotation des stocks', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Prévision de stock
+   */
+  async getStockForecast(
+    productId: string,
+    options: { periods?: number; method?: 'moving_average' | 'exponential' | 'regression' } = {}
+  ): Promise<any> {
+    try {
+      return await ApiService.get<any>(
+        `${InventoryApiService.BASE_PATH}/analytics/forecast/${productId}`,
+        options
+      );
+    } catch (error) {
+      logger.error(`Erreur lors de la prévision de stock pour le produit ${productId}`, error);
       throw error;
     }
   }

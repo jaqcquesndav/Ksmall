@@ -6,6 +6,7 @@ import { Provider as ReduxProvider } from 'react-redux';
 import { store } from './src/store';
 import { AuthProvider } from './src/context/AuthContext';
 import { CurrencyProvider } from './src/context/CurrencyContext';
+import { PaymentProvider } from './src/context/PaymentContext';
 import { ThemeProvider, useThemeContext } from './src/context/ThemeContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import DatabaseService from './src/services/DatabaseService';
@@ -35,10 +36,12 @@ const ThemedApp = () => {
     <PaperProvider theme={theme}>
       <AuthProvider>
         <CurrencyProvider>
-          <NavigationContainer>
-            <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
-            <RootNavigator />
-          </NavigationContainer>
+          <PaymentProvider>
+            <NavigationContainer>
+              <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
+              <RootNavigator />
+            </NavigationContainer>
+          </PaymentProvider>
         </CurrencyProvider>
       </AuthProvider>
     </PaperProvider>

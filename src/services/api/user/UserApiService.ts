@@ -1,65 +1,13 @@
 import ApiService from '../ApiService';
-import { User } from '../../../types/auth';
 import logger from '../../../utils/logger';
-
-/**
- * Interface pour un utilisateur étendu avec les informations de profil
- */
-export interface UserProfile extends User {
-  position?: string;
-  department?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  postalCode?: string;
-  timezone?: string;
-  language?: string;
-  avatar?: string;
-  preferences?: Record<string, any>;
-  role?: string;
-  permissions?: string[];
-}
-
-/**
- * Interface pour une entreprise
- */
-export interface Company {
-  id: string;
-  name: string;
-  legalName?: string;
-  taxId?: string;
-  registrationNumber?: string;
-  industry?: string;
-  size?: string;
-  foundedYear?: number;
-  website?: string;
-  logo?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  postalCode?: string;
-  phone?: string;
-  email?: string;
-  settings?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Interface pour un membre de l'équipe
- */
-export interface TeamMember {
-  id: string;
-  userId: string;
-  email: string;
-  displayName: string;
-  role: string;
-  permissions: string[];
-  status: 'active' | 'invited' | 'inactive';
-  invitedAt?: string;
-  joinedAt?: string;
-  lastActiveAt?: string;
-}
+import { 
+  UserProfile, 
+  Company, 
+  TeamMember, 
+  UserNotification, 
+  UserActivity,
+  SystemRole 
+} from '../../../types/user';
 
 /**
  * Service API pour la gestion des utilisateurs et des entreprises
@@ -247,11 +195,9 @@ class UserApiService {
   /**
    * Récupère les rôles disponibles dans le système
    */
-  async getAvailableRoles(): Promise<Array<{ id: string; name: string; description: string; permissions: string[] }>> {
+  async getAvailableRoles(): Promise<SystemRole[]> {
     try {
-      return await ApiService.get<Array<{ id: string; name: string; description: string; permissions: string[] }>>(
-        `${UserApiService.BASE_PATH}/roles`
-      );
+      return await ApiService.get<SystemRole[]>(`${UserApiService.BASE_PATH}/roles`);
     } catch (error) {
       logger.error('Erreur lors de la récupération des rôles disponibles', error);
       throw error;
@@ -264,9 +210,9 @@ class UserApiService {
   async getUserActivity(
     limit: number = 20, 
     offset: number = 0
-  ): Promise<Array<{ id: string; type: string; description: string; timestamp: string; metadata?: any }>> {
+  ): Promise<UserActivity[]> {
     try {
-      return await ApiService.get<Array<{ id: string; type: string; description: string; timestamp: string; metadata?: any }>>(
+      return await ApiService.get<UserActivity[]>(
         `${UserApiService.BASE_PATH}/me/activity`,
         { limit, offset }
       );
@@ -283,17 +229,9 @@ class UserApiService {
     limit: number = 20, 
     offset: number = 0, 
     unreadOnly: boolean = false
-  ): Promise<Array<{
-    id: string;
-    type: string;
-    title: string;
-    message: string;
-    read: boolean;
-    timestamp: string;
-    data?: any;
-  }>> {
+  ): Promise<UserNotification[]> {
     try {
-      return await ApiService.get<any[]>(
+      return await ApiService.get<UserNotification[]>(
         `${UserApiService.BASE_PATH}/me/notifications`,
         { limit, offset, unreadOnly }
       );

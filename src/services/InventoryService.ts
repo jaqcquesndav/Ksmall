@@ -384,7 +384,7 @@ class InventoryService {
       const transactionRef = reference || `ADJ-${Date.now().toString().slice(-6)}`;
       
       // Enregistrer la transaction d'ajustement de stock
-      await this.createInventoryTransaction({
+      await this.recordInventoryTransaction({
         id: transactionId,
         type: 'adjustment',
         date: now,
@@ -526,86 +526,156 @@ class InventoryService {
       throw error;
     }
   }
-  
+
   /**
-   * Récupère les transactions d'inventaire
+   * Get supplier by ID
    */
-  async getInventoryTransactions(): Promise<InventoryTransaction[]> {
-    // À implémenter quand la table des transactions d'inventaire sera créée
-    // Pour le moment, retourner les données mock avec le bon type
-    if (inventoryMockData.transactions) {
-      // Adapter les données mock pour qu'elles correspondent au type InventoryTransaction
-      return inventoryMockData.transactions.map(transaction => ({
-        ...transaction,
-        type: transaction.type as 'purchase' | 'sale' | 'adjustment',
-        status: transaction.status as 'pending' | 'completed' | 'cancelled'
-      }));
-    }
-    return [];
+  async getSupplierById(id: string): Promise<Supplier | null> {
+    // For now, get all suppliers and find the one with matching ID
+    const suppliers = await this.getSuppliers();
+    return suppliers.find(supplier => supplier.id === id) || null;
   }
-  
+
   /**
-   * Crée une transaction d'inventaire (pour ajustements, achats, ventes)
+   * Update a supplier
    */
-  async createInventoryTransaction(transaction: InventoryTransaction): Promise<InventoryTransaction> {
-    // À implémenter quand la table des transactions d'inventaire sera créée
-    // Pour le moment, simuler une création réussie
-    logger.info('Création d\'une transaction d\'inventaire (simulation):', transaction);
+  async updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier> {
+    // Mock implementation until database support is added
+    logger.info(`Updating supplier ${id}`, updates);
+    
+    const suppliers = await this.getSuppliers();
+    const supplierIndex = suppliers.findIndex(supplier => supplier.id === id);
+    
+    if (supplierIndex === -1) {
+      throw new Error(`Supplier with ID ${id} not found`);
+    }
+    
+    // Create updated supplier
+    const updatedSupplier = {
+      ...suppliers[supplierIndex],
+      ...updates
+    };
+    
+    // In a real implementation, this would update the database
+    return updatedSupplier;
+  }
+
+  /**
+   * Delete a supplier
+   */
+  async deleteSupplier(id: string): Promise<boolean> {
+    // Mock implementation until database support is added
+    logger.info(`Deleting supplier ${id}`);
+    
+    // In a real implementation, this would delete from the database
+    return true;
+  }
+
+  /**
+   * Record a new inventory transaction
+   */
+  async recordInventoryTransaction(transaction: InventoryTransaction): Promise<InventoryTransaction> {
+    // Mock implementation until database support is added
+    logger.info('Recording inventory transaction', transaction);
+    
+    // In a real implementation, this would create a transaction in the database
     return transaction;
   }
-  
+
   /**
-   * Recherche de produits
+   * Get all inventory transactions
    */
-  async searchProducts(query: string): Promise<InventoryItem[]> {
+  async getInventoryTransactions(): Promise<InventoryTransaction[]> {
     try {
-      const db = await DatabaseService.getDBConnection();
-      const searchTerm = `%${query}%`;
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `SELECT * FROM inventory_items 
-         WHERE name LIKE ? OR sku LIKE ? OR description LIKE ? OR supplier LIKE ?
-         ORDER BY name`,
-        [searchTerm, searchTerm, searchTerm, searchTerm]
-      );
+      // Mock implementation until database support is added
+      logger.info('Getting inventory transactions');
       
-      if (error || !result) {
-        logger.error(`Erreur lors de la recherche de produits avec '${query}':`, error);
-        throw error || new Error(`Erreur lors de la recherche de produits avec '${query}'`);
-      }
-      
-      const products: InventoryItem[] = [];
-      for (let i = 0; i < result.rows.length; i++) {
-        const row = result.rows.item(i);
-        products.push({
-          id: row.id.toString(),
-          sku: row.sku || '',
-          name: row.name,
-          description: row.description,
-          category: row.category || '',
-          subcategory: row.subcategory || '',
-          quantity: row.quantity,
-          price: row.price,
-          cost: row.cost,
-          reorderPoint: row.reorder_point,
-          supplier: row.supplier || '',
-          location: row.location || '',
-          imageUrl: row.image_url || null
-        });
-      }
-      
-      return products;
+      // In a real implementation, this would fetch from the database
+      // For now, return mock data
+      return [
+        {
+          id: 'tx-' + Date.now(),
+          type: 'purchase',
+          date: new Date().toISOString(),
+          reference: 'PO-' + Math.floor(Math.random() * 1000),
+          items: [
+            {
+              productId: 'prod-1',
+              quantity: 10,
+              unitPrice: 20,
+              unitCost: 15,
+              totalPrice: 200,
+              totalCost: 150
+            }
+          ],
+          supplier: 'supplier-1',
+          status: 'completed',
+          notes: 'Restock purchase',
+          totalAmount: 200
+        }
+      ];
     } catch (error) {
-      logger.error(`Erreur lors de la recherche de produits avec '${query}':`, error);
-      // Utiliser les données mock comme fallback
-      const searchTerm = query.toLowerCase();
-      return inventoryMockData.products.filter(p => 
-        p.name.toLowerCase().includes(searchTerm) ||
-        p.sku.toLowerCase().includes(searchTerm) ||
-        (p.description && p.description.toLowerCase().includes(searchTerm)) ||
-        p.supplier.toLowerCase().includes(searchTerm)
-      );
+      logger.error('Error getting inventory transactions:', error);
+      return [];
     }
+  }
+
+  /**
+   * Get stock levels for all products
+   */
+  async getStockLevels(): Promise<any[]> {
+    // Mock implementation that creates stock levels from products
+    const products = await this.getProducts();
+    
+    return products.map(product => ({
+      id: `stock-${product.id}`,
+      productId: product.id,
+      quantity: product.quantity,
+      location: product.location || 'default',
+      lastUpdated: new Date().toISOString()
+    }));
+  }
+
+  /**
+   * Get stock for a specific product
+   */
+  async getStockByProductId(productId: string): Promise<any | null> {
+    const product = await this.getProductById(productId);
+    
+    if (!product) {
+      return null;
+    }
+    
+    return {
+      id: `stock-${productId}`,
+      productId: productId,
+      quantity: product.quantity,
+      location: product.location || 'default',
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Check for items with stock levels below threshold
+   */
+  async checkLowStockItems(threshold?: number): Promise<any[]> {
+    const products = await this.getProducts();
+    const defaultThreshold = 10; // Default threshold if not specified
+    
+    return products.filter(product => 
+      product.quantity <= (threshold !== undefined ? threshold : 
+        (product.reorderPoint || defaultThreshold))
+    );
+  }
+
+  /**
+   * Calculate total inventory value
+   */
+  async calculateInventoryValue(): Promise<number> {
+    const products = await this.getProducts();
+    
+    return products.reduce((total, product) => 
+      total + (product.quantity * product.cost), 0);
   }
 }
 

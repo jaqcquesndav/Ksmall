@@ -8,6 +8,7 @@ interface DatabaseContextValue {
   executeQuery: (query: string, params?: any[]) => Promise<any>;
   initializeDb: () => Promise<void>; // Added this missing property
   error: Error | null; // Added this missing property
+  isOfflineMode: boolean; // Added missing property
 }
 
 const DatabaseContext = createContext<DatabaseContextValue>({
@@ -16,12 +17,14 @@ const DatabaseContext = createContext<DatabaseContextValue>({
   executeQuery: async () => null,
   initializeDb: async () => {}, // Default implementation
   error: null, // Default value
+  isOfflineMode: false, // Default value
 });
 
 export const DatabaseProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [db, setDb] = useState<any>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
 
   // Define the initializeDb function
   const initializeDb = async () => {
@@ -80,7 +83,8 @@ export const DatabaseProvider: React.FC<{children: ReactNode}> = ({ children }) 
       db, 
       executeQuery, 
       initializeDb, // Expose the function
-      error // Expose the error state
+      error, // Expose the error state
+      isOfflineMode // Expose the offline mode state
     }}>
       {children}
     </DatabaseContext.Provider>

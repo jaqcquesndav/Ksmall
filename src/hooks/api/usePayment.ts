@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useApi } from './useApi';
-import API from '../../services/API';
+import api from '../../services/API';
+import logger from '../../utils/logger';
 
 /**
  * Type représentant un abonnement
@@ -42,16 +43,19 @@ export interface SubscriptionPlan {
  */
 export interface Invoice {
   id: string;
-  subscriptionId?: string;
   number: string;
-  date: string;
-  dueDate: string;
-  status: 'paid' | 'open' | 'void' | 'uncollectible' | 'draft';
-  amount: number;
+  status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
+  customerName: string;
+  customerEmail?: string;
+  amountDue: number;
+  amountPaid: number;
+  amountRemaining: number;
   currency: string;
-  description?: string;
-  pdfUrl?: string;
+  dueDate?: string;
+  paidDate?: string;
+  createdAt: string;
   items: InvoiceItem[];
+  metadata?: Record<string, any>;
 }
 
 /**
@@ -60,9 +64,9 @@ export interface Invoice {
 export interface InvoiceItem {
   id: string;
   description: string;
-  quantity: number;
-  unitPrice: number;
   amount: number;
+  currency: string;
+  quantity: number;
   metadata?: Record<string, any>;
 }
 
@@ -138,7 +142,7 @@ export function usePayment() {
    */
   const useActiveSubscription = () => {
     return useApi<Subscription>(
-      () => API.payment.getActiveSubscription(),
+      () => api.payment.getActiveSubscription(),
       {
         autoFetch: true,
         fetchOnFocus: true,
@@ -156,7 +160,7 @@ export function usePayment() {
    */
   const useSubscriptionHistory = () => {
     return useApi<Subscription[]>(
-      () => API.payment.getSubscriptionHistory(),
+      () => api.payment.getSubscriptionHistory(),
       {
         autoFetch: true,
         cache: {
@@ -173,7 +177,7 @@ export function usePayment() {
    */
   const useSubscriptionPlans = () => {
     return useApi<SubscriptionPlan[]>(
-      () => API.payment.getSubscriptionPlans(),
+      () => api.payment.getSubscriptionPlans(),
       {
         autoFetch: true,
         cache: {
@@ -190,7 +194,7 @@ export function usePayment() {
    */
   const useSubscriptionPlan = (planId: string | null) => {
     return useApi<SubscriptionPlan>(
-      () => planId ? API.payment.getSubscriptionPlan(planId) : Promise.reject('ID plan requis'),
+      () => planId ? api.payment.getSubscriptionPlan(planId) : Promise.reject('ID plan requis'),
       {
         autoFetch: !!planId,
         cache: {
@@ -208,7 +212,7 @@ export function usePayment() {
   const useSubscribe = () => {
     return useApi<Subscription>(
       (planId: string, paymentMethodId?: string, couponCode?: string) => 
-        API.payment.subscribe(planId, paymentMethodId, couponCode),
+        api.payment.subscribe(planId, paymentMethodId, couponCode),
       { autoFetch: false }
     );
   };
@@ -218,7 +222,7 @@ export function usePayment() {
    */
   const useCancelSubscription = () => {
     return useApi<Subscription>(
-      (atPeriodEnd: boolean = true) => API.payment.cancelSubscription(atPeriodEnd),
+      (atPeriodEnd: boolean = true) => api.payment.cancelSubscription(atPeriodEnd),
       { autoFetch: false }
     );
   };
@@ -229,7 +233,7 @@ export function usePayment() {
   const useUpdateSubscription = () => {
     return useApi<Subscription>(
       (planId: string, immediate: boolean = false) => 
-        API.payment.updateSubscription(planId, immediate),
+        api.payment.updateSubscription(planId, immediate),
       { autoFetch: false }
     );
   };
@@ -239,7 +243,7 @@ export function usePayment() {
    */
   const useInvoices = (options: PaymentQueryOptions = {}) => {
     return useApi<Invoice[]>(
-      () => API.payment.getInvoices(options),
+      () => api.payment.getInvoices(options),
       {
         autoFetch: true,
         cache: {
@@ -256,7 +260,7 @@ export function usePayment() {
    */
   const useInvoice = (invoiceId: string | null) => {
     return useApi<Invoice>(
-      () => invoiceId ? API.payment.getInvoice(invoiceId) : Promise.reject('ID facture requis'),
+      () => invoiceId ? api.payment.getInvoice(invoiceId) : Promise.reject('ID facture requis'),
       {
         autoFetch: !!invoiceId,
         cache: {
@@ -273,7 +277,7 @@ export function usePayment() {
    */
   const usePaymentMethods = () => {
     return useApi<PaymentMethod[]>(
-      () => API.payment.getPaymentMethods(),
+      () => api.payment.getPaymentMethods(),
       {
         autoFetch: true,
         fetchOnFocus: true,
@@ -291,7 +295,7 @@ export function usePayment() {
    */
   const useAddPaymentMethod = () => {
     return useApi<PaymentMethod>(
-      (paymentMethodData: Record<string, any>) => API.payment.addPaymentMethod(paymentMethodData),
+      (paymentMethodData: Record<string, any>) => api.payment.addPaymentMethod(paymentMethodData),
       { autoFetch: false }
     );
   };
@@ -301,7 +305,7 @@ export function usePayment() {
    */
   const useDeletePaymentMethod = () => {
     return useApi<boolean>(
-      (paymentMethodId: string) => API.payment.deletePaymentMethod(paymentMethodId),
+      (paymentMethodId: string) => api.payment.deletePaymentMethod(paymentMethodId),
       { autoFetch: false }
     );
   };
@@ -311,7 +315,7 @@ export function usePayment() {
    */
   const useSetDefaultPaymentMethod = () => {
     return useApi<PaymentMethod>(
-      (paymentMethodId: string) => API.payment.setDefaultPaymentMethod(paymentMethodId),
+      (paymentMethodId: string) => api.payment.setDefaultPaymentMethod(paymentMethodId),
       { autoFetch: false }
     );
   };
@@ -321,7 +325,7 @@ export function usePayment() {
    */
   const useTransactions = (options: PaymentQueryOptions = {}) => {
     return useApi<PaymentTransaction[]>(
-      () => API.payment.getTransactions(options),
+      () => api.payment.getTransactions(options),
       {
         autoFetch: true,
         cache: {
@@ -338,7 +342,7 @@ export function usePayment() {
    */
   const useAccountStatus = () => {
     return useApi<AccountStatus>(
-      () => API.payment.getAccountStatus(),
+      () => api.payment.getAccountStatus(),
       {
         autoFetch: true,
         fetchOnFocus: true,
@@ -356,10 +360,10 @@ export function usePayment() {
    */
   const downloadInvoice = useCallback(async (invoiceId: string): Promise<string> => {
     try {
-      const result = await API.payment.downloadInvoice(invoiceId);
+      const result = await api.payment.downloadInvoice(invoiceId);
       return result.pdfUrl;
     } catch (error) {
-      console.error('Erreur lors du téléchargement de la facture:', error);
+      logger.error('Erreur lors du téléchargement de la facture:', error);
       throw error;
     }
   }, []);
@@ -371,9 +375,9 @@ export function usePayment() {
     couponCode: string
   ): Promise<{ valid: boolean; discount?: number; message?: string }> => {
     try {
-      return await API.payment.applyCoupon(couponCode);
+      return await api.payment.applyCoupon(couponCode);
     } catch (error) {
-      console.error('Erreur lors de l\'application du coupon:', error);
+      logger.error('Erreur lors de l\'application du coupon:', error);
       throw error;
     }
   }, []);

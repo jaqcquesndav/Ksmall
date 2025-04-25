@@ -1,5 +1,5 @@
 import ApiService from '../ApiService';
-import { Transaction, Account, FinancialReport, JournalEntry } from '../../../services/AccountingService';
+import { Transaction, Account, FinancialReport, JournalEntry } from '../../../types/accounting';
 import logger from '../../../utils/logger';
 
 /**
@@ -128,6 +128,18 @@ class AccountingApiService {
       return await ApiService.get<Account[]>(`${AccountingApiService.BASE_PATH}/accounts`);
     } catch (error) {
       logger.error('Erreur lors de la récupération des comptes', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère un compte par son ID
+   */
+  async getAccountById(id: string): Promise<Account> {
+    try {
+      return await ApiService.get<Account>(`${AccountingApiService.BASE_PATH}/accounts/${id}`);
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération du compte ${id}`, error);
       throw error;
     }
   }
@@ -355,6 +367,41 @@ class AccountingApiService {
       return await ApiService.get<JournalEntry[]>(`${AccountingApiService.BASE_PATH}/journal-entries`, params);
     } catch (error) {
       logger.error('Erreur lors de la récupération des écritures du journal', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère une écriture comptable par son ID
+   */
+  async getJournalEntryById(id: string): Promise<JournalEntry> {
+    try {
+      return await ApiService.get<JournalEntry>(`${AccountingApiService.BASE_PATH}/journal-entries/${id}`);
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération de l'écriture de journal ${id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exporte des données comptables au format demandé
+   */
+  async exportData(
+    type: 'transactions' | 'journal' | 'ledger' | 'accounts',
+    format: 'csv' | 'xlsx' | 'pdf',
+    options: Record<string, any> = {}
+  ): Promise<{ url: string }> {
+    try {
+      return await ApiService.post<{ url: string }>(
+        `${AccountingApiService.BASE_PATH}/export`,
+        {
+          type,
+          format,
+          ...options
+        }
+      );
+    } catch (error) {
+      logger.error(`Erreur lors de l'exportation des données ${type}`, error);
       throw error;
     }
   }
