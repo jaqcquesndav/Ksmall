@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Card, Title, Paragraph, Text, IconButton, Button, Dialog, Portal, Divider, ProgressBar, useTheme } from 'react-native-paper';
+import { Card, Title, Paragraph, Text, IconButton, Button, Dialog, Portal, Divider, ProgressBar, useTheme, Snackbar } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNetInfo } from '@react-native-community/netinfo';
 import AppHeader from '../../components/common/AppHeader';
 import DatabaseService from '../../services/DatabaseService';
 import Chart from '../../components/common/Chart';
@@ -15,6 +16,10 @@ import useOrientation from '../../hooks/useOrientation';
 import OrientationAwareView from '../../components/common/OrientationAwareView';
 import AdaptiveGrid from '../../components/common/AdaptiveGrid';
 
+// Import des hooks API
+import { useDashboard } from '../../hooks/api/useDashboard';
+import { usePayment } from '../../hooks/api/usePayment';
+
 // Import des composants et données
 import SubscriptionStatusWidget from '../../components/dashboard/SubscriptionStatusWidget';
 import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
@@ -24,19 +29,63 @@ const DashboardScreen = () => {
   const { t } = useTranslation();
   const theme = useTheme();
   const { isLandscape, dimensions } = useOrientation();
-  
+  const netInfo = useNetInfo();
+  const isConnected = netInfo.isConnected;
+
   // États pour les sections togglables
   const [showCreditScore, setShowCreditScore] = useState(true);
   const [showBalances, setShowBalances] = useState(true);
   const [showSubscription, setShowSubscription] = useState(true);
   const [showTransactions, setShowTransactions] = useState(true);
   const [showActivities, setShowActivities] = useState(true);
+
+  // Hook de notification hors ligne
+  const [offlineSnackVisible, setOfflineSnackVisible] = useState(false);
+
+  // Utilisation des hooks API avec gestion du mode hors ligne
+  const dashboard = useDashboard();
+  const payment = usePayment();
   
-  // États pour les dialogues d'information
-  const [creditInfoVisible, setCreditInfoVisible] = useState(false);
-  const [esgInfoVisible, setEsgInfoVisible] = useState(false);
-  
-  // Données des scores et soldes
+  // Récupération des métriques financières
+  const { 
+    data: financialMetricsData, 
+    isLoading: isFinancialLoading,
+    isFromCache: isFinancialFromCache,
+    error: financialError
+  } = dashboard.useFinancialMetrics({
+    startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // 1er janvier année courante
+    endDate: new Date().toISOString().split('T')[0], // aujourd'hui
+  });
+
+  // Récupération des métriques d'inventaire
+  const { 
+    data: inventoryMetricsData, 
+    isLoading: isInventoryLoading,
+    isFromCache: isInventoryFromCache
+  } = dashboard.useInventoryMetrics();
+
+  // Récupération des métriques de vente
+  const { 
+    data: salesMetricsData, 
+    isLoading: isSalesLoading,
+    isFromCache: isSalesFromCache
+  } = dashboard.useSalesMetrics();
+
+  // Récupération des alertes du tableau de bord
+  const { 
+    data: alertsData, 
+    isLoading: isAlertsLoading,
+    isFromCache: isAlertsFromCache
+  } = dashboard.useAlerts();
+
+  // Récupération de l'abonnement actif
+  const { 
+    data: subscriptionData, 
+    isLoading: isSubscriptionLoading,
+    isFromCache: isSubscriptionFromCache
+  } = payment.useActiveSubscription();
+
+  // États adaptés pour les données
   const [creditScore, setCreditScore] = useState(0);
   const [esgRating, setEsgRating] = useState('B+');
   const [accountBalances, setAccountBalances] = useState({
@@ -57,45 +106,158 @@ const DashboardScreen = () => {
   // Données des transactions récentes
   const [recentTransactions, setRecentTransactions] = useState([]);
   
-  // Informations sur l'abonnement (ajout de l'état manquant)
+  // Informations sur l'abonnement
   const [subscriptionInfo, setSubscriptionInfo] = useState({
     plan: '',
     expiryDate: new Date(),
     features: []
   });
   
+  // Effet pour détecter les changements de connectivité
   useEffect(() => {
-    // Charger les données du tableau de bord depuis le service centralisé
-    loadDashboardData();
-  }, []);
+    // Si nous passons de connecté à déconnecté, afficher une notification
+    if (isConnected === false) {
+      setOfflineSnackVisible(true);
+    }
+  }, [isConnected]);
+
+  // Effet pour traiter les données financières
+  useEffect(() => {
+    if (financialMetricsData) {
+      // Données du tableau de bord disponibles via l'API
+      try {
+        // Extraire le score de crédit s'il existe
+        const creditScoreMetric = financialMetricsData.find(m => m.key === 'creditScore');
+        if (creditScoreMetric) {
+          setCreditScore(creditScoreMetric.value);
+        }
+        
+        // Extraire la notation ESG si elle existe
+        const esgMetric = financialMetricsData.find(m => m.key === 'esgRating');
+        if (esgMetric) {
+          setEsgRating(esgMetric.value.toString());
+        }
+        
+        // Mettre à jour les métriques financières
+        const revenue = financialMetricsData.find(m => m.key === 'totalRevenue')?.value || 0;
+        const expenses = financialMetricsData.find(m => m.key === 'totalExpenses')?.value || 0;
+        const netIncome = revenue - expenses;
+        const margin = revenue > 0 ? (netIncome / revenue) * 100 : 0;
+
+        setFinancialMetrics({
+          totalRevenue: revenue,
+          totalExpenses: expenses,
+          netIncome: netIncome,
+          profitMargin: parseFloat(margin.toFixed(1))
+        });
+        
+      } catch (error) {
+        console.error('Erreur lors du traitement des métriques financières:', error);
+        // Fallback vers les données locales
+        loadFallbackDashboardData();
+      }
+    } else if (financialError && !isFinancialLoading) {
+      console.warn('Erreur lors du chargement des métriques financières:', financialError);
+      // En cas d'erreur, charger les données de fallback
+      loadFallbackDashboardData();
+    }
+  }, [financialMetricsData, financialError, isFinancialLoading]);
+
+  // Effet pour traiter les données d'inventaire et créer les balances
+  useEffect(() => {
+    if (inventoryMetricsData) {
+      try {
+        const cash = inventoryMetricsData.find(m => m.key === 'cashOnHand')?.value || 0;
+        const receivables = inventoryMetricsData.find(m => m.key === 'accountsReceivable')?.value || 0;
+        const payables = inventoryMetricsData.find(m => m.key === 'accountsPayable')?.value || 0;
+
+        setAccountBalances({
+          cash,
+          receivables,
+          payables
+        });
+      } catch (error) {
+        console.error('Erreur lors du traitement des métriques d\'inventaire:', error);
+      }
+    }
+  }, [inventoryMetricsData]);
+
+  // Effet pour traiter les données de vente
+  useEffect(() => {
+    if (salesMetricsData) {
+      try {
+        // Transformer les données de vente en transactions récentes si disponible
+        const recentTransactionsData = salesMetricsData
+          .filter(m => m.key.startsWith('transaction_'))
+          .map(m => {
+            // Vérifier si la propriété metadata existe avant de l'utiliser
+            return (m as any).metadata || {};
+          })
+          .filter(t => t.id && t.date && t.amount);
+
+        if (recentTransactionsData.length > 0) {
+          setRecentTransactions(recentTransactionsData);
+        }
+      } catch (error) {
+        console.error('Erreur lors du traitement des métriques de vente:', error);
+      }
+    }
+  }, [salesMetricsData]);
   
-  // Fonction pour charger les données du tableau de bord
-  const loadDashboardData = async () => {
+  // Effet pour traiter les données d'abonnement
+  useEffect(() => {
+    if (subscriptionData) {
+      try {
+        setSubscriptionInfo({
+          plan: subscriptionData.planName,
+          expiryDate: new Date(subscriptionData.endDate),
+          features: subscriptionData.metadata?.features || []
+        });
+      } catch (error) {
+        console.error('Erreur lors du traitement des données d\'abonnement:', error);
+      }
+    }
+  }, [subscriptionData]);
+  
+  useEffect(() => {
+    // Charger les informations de devise
+    loadCurrencyInfo();
+    
+    // Si aucune donnée n'est récupérée de l'API ou si en mode hors ligne,
+    // charger les données de fallback
+    if (!isConnected || (!financialMetricsData && !inventoryMetricsData && !salesMetricsData)) {
+      loadFallbackDashboardData();
+    }
+  }, [isConnected]);
+
+  // Fonction pour charger les informations de devise
+  const loadCurrencyInfo = async () => {
+    try {
+      const currency = await DashboardAccountingService.getCurrentCurrencyInfo();
+      setCurrencyInfo(currency);
+    } catch (error) {
+      console.warn("Erreur lors du chargement des informations de devise:", error);
+      // Fallback pour la devise
+      setCurrencyInfo({
+        code: 'XOF',
+        symbol: 'FCFA',
+        name: 'Franc CFA BCEAO',
+        format: (value) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value),
+        position: 'after',
+        decimals: 0,
+        defaultLocale: 'fr-FR'
+      });
+    }
+  };
+
+  // Fonction pour charger les données du tableau de bord depuis le stockage local
+  const loadFallbackDashboardData = async () => {
     try {
       // Vérifier si nous sommes en mode démo ou développement
-      // En mode démo/dev, nous utilisons des données de démonstration au lieu de la BD
       const isDemoMode = true; // Pour le développement, toujours utiliser les données de démo
       
       // Informer le service que nous sommes en mode démo
       DashboardAccountingService.setDemoMode(isDemoMode);
-      
-      // Obtenir les informations sur la devise actuelle
-      try {
-        const currency = await DashboardAccountingService.getCurrentCurrencyInfo();
-        setCurrencyInfo(currency);
-      } catch (error) {
-        console.warn("Erreur lors du chargement des informations de devise:", error);
-        // Fallback pour la devise
-        setCurrencyInfo({
-          code: 'XOF',
-          symbol: 'FCFA',
-          name: 'Franc CFA BCEAO',
-          format: (value) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value),
-          position: 'after',
-          decimals: 0,
-          defaultLocale: 'fr-FR'
-        });
-      }
       
       // Obtenir la cote de crédit
       try {
@@ -213,11 +375,9 @@ const DashboardScreen = () => {
       }
     } catch (error) {
       console.error("Erreur générale lors du chargement des données du tableau de bord:", error);
-      // En cas d'échec complet, nous pourrions afficher une alerte ou une notification
-      // Alert.alert("Erreur", "Impossible de charger les données du tableau de bord. Veuillez réessayer.");
     }
   };
-
+  
   const getCreditScoreColor = (score) => {
     if (score >= 80) return '#4CAF50';
     if (score >= 60) return '#FFC107';
@@ -233,13 +393,11 @@ const DashboardScreen = () => {
     return '#F44336';
   };
 
-  // Fonction pour formater les montants selon la devise sélectionnée
   const formatCurrency = (value) => {
     if (currencyInfo) {
       return currencyInfo.format(value);
     }
     
-    // Fallback au format par défaut si pas d'info sur la devise
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: 'XOF'
@@ -253,6 +411,20 @@ const DashboardScreen = () => {
     >
       <AppHeader title={t('dashboard')} />
       
+      {/* Indicateur de mode hors ligne ou données issues du cache */}
+      {(!isConnected || isFinancialFromCache) && (
+        <View style={styles.offlineIndicator}>
+          <MaterialCommunityIcons 
+            name={isConnected ? "database" : "wifi-off"} 
+            size={16} 
+            color="#FFF" 
+          />
+          <Text style={styles.offlineText}>
+            {isConnected ? t('using_cached_data') : t('offline_mode')}
+          </Text>
+        </View>
+      )}
+      
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={[
@@ -260,504 +432,24 @@ const DashboardScreen = () => {
           isLandscape && styles.contentLandscape
         ]}
       >
-        {isLandscape ? (
-          // Disposition améliorée en mode paysage
-          <View style={styles.landscapeContainer}>
-            {/* Première rangée - 2 colonnes avec largeur égale */}
-            <View style={styles.landscapeRow}>
-              {/* Colonne 1 - Carte de résumé financier */}
-              <Card style={[styles.card, styles.landscapeColumn]}>
-                <Card.Content>
-                  <View style={styles.cardHeader}>
-                    <Title>{t('financial_summary')}</Title>
-                    <View style={styles.actionButtonsContainer}>
-                      <QuickFinanceActionsButton />
-                      <IconButton 
-                        icon="refresh" 
-                        size={20} 
-                        onPress={() => loadDashboardData()} 
-                      />
-                    </View>
-                  </View>
-                  
-                  {/* Section Cote de Crédit et ESG - Togglable */}
-                  <Card style={[styles.innerCard, !showCreditScore && styles.collapsedCard]}>
-                    <Card.Content>
-                      <TouchableOpacity 
-                        onPress={() => setShowCreditScore(!showCreditScore)}
-                        style={styles.cardHeader}
-                      >
-                        <Title style={styles.innerCardTitle}>{t('credit_score_and_ratings')}</Title>
-                        <View style={styles.actionButtons}>
-                          <IconButton 
-                            icon="information-outline" 
-                            size={20} 
-                            onPress={() => setCreditInfoVisible(true)} 
-                          />
-                          <IconButton 
-                            icon={showCreditScore ? "chevron-up" : "chevron-down"} 
-                            size={20} 
-                            onPress={() => setShowCreditScore(!showCreditScore)} 
-                          />
-                        </View>
-                      </TouchableOpacity>
-                      
-                      {showCreditScore && (
-                        <View style={styles.ratingsContainer}>
-                          <View style={styles.ratingItem}>
-                            <View>
-                              <Text style={styles.ratingLabel}>{t('credit_score')}</Text>
-                              <Text style={[styles.scoreValue, { color: getCreditScoreColor(creditScore) }]}>
-                                {creditScore}/100
-                              </Text>
-                            </View>
-                            <View style={[styles.scoreIndicator, { backgroundColor: getCreditScoreColor(creditScore) }]} />
-                          </View>
-                          
-                          <View style={styles.ratingDivider} />
-                          
-                          <View style={styles.ratingItem}>
-                            <View>
-                              <View style={styles.ratingLabelContainer}>
-                                <Text style={styles.ratingLabel}>{t('esg_rating')}</Text>
-                                <IconButton 
-                                  icon="information-outline" 
-                                  size={16} 
-                                  onPress={() => setEsgInfoVisible(true)} 
-                                  style={styles.infoButton}
-                                />
-                              </View>
-                              <Text style={[styles.scoreValue, { color: getESGRatingColor(esgRating) }]}>
-                                {esgRating}
-                              </Text>
-                            </View>
-                            <View style={[styles.scoreIndicator, { backgroundColor: getESGRatingColor(esgRating) }]} />
-                          </View>
-                        </View>
-                      )}
-                    </Card.Content>
-                  </Card>
-                  
-                  {/* Section Soldes - Togglable */}
-                  <Card style={[styles.innerCard, !showBalances && styles.collapsedCard]}>
-                    <Card.Content>
-                      <TouchableOpacity 
-                        onPress={() => setShowBalances(!showBalances)}
-                        style={styles.cardHeader}
-                      >
-                        <Title style={styles.innerCardTitle}>{t('balances')}</Title>
-                        <IconButton 
-                          icon={showBalances ? "chevron-up" : "chevron-down"} 
-                          size={20} 
-                          onPress={() => setShowBalances(!showBalances)} 
-                        />
-                      </TouchableOpacity>
-                      
-                      {showBalances && (
-                        <View style={styles.balancesContainer}>
-                          <View style={styles.balanceRow}>
-                            <Text style={styles.balanceLabel}>{t('cash')}</Text>
-                            <Text style={styles.balanceValue}>
-                              {formatCurrency(accountBalances.cash)}
-                            </Text>
-                          </View>
-                          <View style={styles.balanceRow}>
-                            <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
-                            <Text style={styles.balanceValue}>
-                              {formatCurrency(accountBalances.receivables)}
-                            </Text>
-                          </View>
-                          <View style={styles.balanceRow}>
-                            <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
-                            <Text style={styles.balanceValue}>
-                              {formatCurrency(accountBalances.payables)}
-                            </Text>
-                          </View>
-                          <View style={[styles.balanceRow, styles.totalRow]}>
-                            <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
-                            <Text style={[
-                              styles.balanceValueTotal,
-                              {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
-                            ]}>
-                              {formatCurrency(financialMetrics.netIncome)}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-                    </Card.Content>
-                  </Card>
-                </Card.Content>
-              </Card>
-              
-              {/* Colonne 2 - Widget Statut de l'Abonnement avec Tokens */}
-              <SubscriptionStatusWidget 
-                collapsed={!showSubscription} 
-                onToggleCollapse={() => setShowSubscription(!showSubscription)} 
-                isLandscape={isLandscape}
-                style={styles.landscapeColumn}
-              />
-            </View>
-            
-            {/* Deuxième rangée - Full width pour les transactions récentes */}
-            <Card style={[styles.card, styles.fullWidthCard]}>
-              <Card.Content>
-                <TouchableOpacity 
-                  onPress={() => setShowTransactions(!showTransactions)}
-                  style={styles.cardHeader}
-                >
-                  <Title>{t('recent_transactions')}</Title>
-                  <IconButton 
-                    icon={showTransactions ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    onPress={() => setShowTransactions(!showTransactions)} 
-                  />
-                </TouchableOpacity>
-                
-                {showTransactions && (
-                  <RecentTransactionsWidget 
-                    transactions={recentTransactions}
-                    isLandscape={isLandscape} 
-                  />
-                )}
-              </Card.Content>
-            </Card>
-            
-            {/* Troisième rangée - Full width pour les activités récentes */}
-            <Card style={[styles.card, styles.fullWidthCard]}>
-              <Card.Content>
-                <TouchableOpacity 
-                  onPress={() => setShowActivities(!showActivities)}
-                  style={styles.cardHeader}
-                >
-                  <Title>{t('recent_activities')}</Title>
-                  <IconButton 
-                    icon={showActivities ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    onPress={() => setShowActivities(!showActivities)} 
-                  />
-                </TouchableOpacity>
-                
-                {showActivities && (
-                  <View style={styles.activitiesContainer}>
-                    {/* Contenu des activités récentes */}
-                  </View>
-                )}
-              </Card.Content>
-            </Card>
-          </View>
-        ) : (
-          // Disposition en mode portrait - Structure originale
-          <View>
-            {/* Carte de résumé financier */}
-            <Card style={styles.card}>
-              <Card.Content>
-                <View style={styles.cardHeader}>
-                  <Title>{t('financial_summary')}</Title>
-                  <View style={styles.actionButtonsContainer}>
-                    <QuickFinanceActionsButton />
-                    <IconButton 
-                      icon="refresh" 
-                      size={20} 
-                      onPress={() => loadDashboardData()} 
-                    />
-                  </View>
-                </View>
-                
-                {/* Section Cote de Crédit et ESG - Togglable */}
-                <Card style={[styles.innerCard, !showCreditScore && styles.collapsedCard]}>
-                  <Card.Content>
-                    <TouchableOpacity 
-                      onPress={() => setShowCreditScore(!showCreditScore)}
-                      style={styles.cardHeader}
-                    >
-                      <Title style={styles.innerCardTitle}>{t('credit_score_and_ratings')}</Title>
-                      <View style={styles.actionButtons}>
-                        <IconButton 
-                          icon="information-outline" 
-                          size={20} 
-                          onPress={() => setCreditInfoVisible(true)} 
-                        />
-                        <IconButton 
-                          icon={showCreditScore ? "chevron-up" : "chevron-down"} 
-                          size={20} 
-                          onPress={() => setShowCreditScore(!showCreditScore)} 
-                        />
-                      </View>
-                    </TouchableOpacity>
-                    
-                    {showCreditScore && (
-                      <View style={styles.ratingsContainer}>
-                        <View style={styles.ratingItem}>
-                          <View>
-                            <Text style={styles.ratingLabel}>{t('credit_score')}</Text>
-                            <Text style={[styles.scoreValue, { color: getCreditScoreColor(creditScore) }]}>
-                              {creditScore}/100
-                            </Text>
-                          </View>
-                          <View style={[styles.scoreIndicator, { backgroundColor: getCreditScoreColor(creditScore) }]} />
-                        </View>
-                        
-                        <View style={styles.ratingDivider} />
-                        
-                        <View style={styles.ratingItem}>
-                          <View>
-                            <View style={styles.ratingLabelContainer}>
-                              <Text style={styles.ratingLabel}>{t('esg_rating')}</Text>
-                              <IconButton 
-                                icon="information-outline" 
-                                size={16} 
-                                onPress={() => setEsgInfoVisible(true)} 
-                                style={styles.infoButton}
-                              />
-                            </View>
-                            <Text style={[styles.scoreValue, { color: getESGRatingColor(esgRating) }]}>
-                              {esgRating}
-                            </Text>
-                          </View>
-                          <View style={[styles.scoreIndicator, { backgroundColor: getESGRatingColor(esgRating) }]} />
-                        </View>
-                      </View>
-                    )}
-                  </Card.Content>
-                </Card>
-                
-                {/* Section Soldes - Togglable */}
-                <Card style={[styles.innerCard, !showBalances && styles.collapsedCard]}>
-                  <Card.Content>
-                    <TouchableOpacity 
-                      onPress={() => setShowBalances(!showBalances)}
-                      style={styles.cardHeader}
-                    >
-                      <Title style={styles.innerCardTitle}>{t('balances')}</Title>
-                      <IconButton 
-                        icon={showBalances ? "chevron-up" : "chevron-down"} 
-                        size={20} 
-                        onPress={() => setShowBalances(!showBalances)} 
-                      />
-                    </TouchableOpacity>
-                    
-                    {showBalances && (
-                      <View style={styles.balancesContainer}>
-                        <View style={styles.balanceRow}>
-                          <Text style={styles.balanceLabel}>{t('cash')}</Text>
-                          <Text style={styles.balanceValue}>
-                            {formatCurrency(accountBalances.cash)}
-                          </Text>
-                        </View>
-                        <View style={styles.balanceRow}>
-                          <Text style={styles.balanceLabel}>{t('accounts_receivable')}</Text>
-                          <Text style={styles.balanceValue}>
-                            {formatCurrency(accountBalances.receivables)}
-                          </Text>
-                        </View>
-                        <View style={styles.balanceRow}>
-                          <Text style={styles.balanceLabel}>{t('accounts_payable')}</Text>
-                          <Text style={styles.balanceValue}>
-                            {formatCurrency(accountBalances.payables)}
-                          </Text>
-                        </View>
-                        <View style={[styles.balanceRow, styles.totalRow]}>
-                          <Text style={styles.balanceLabelTotal}>{t('net_position')}</Text>
-                          <Text style={[
-                            styles.balanceValueTotal,
-                            {color: financialMetrics.netIncome >= 0 ? '#4CAF50' : '#F44336'}
-                          ]}>
-                            {formatCurrency(financialMetrics.netIncome)}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </Card.Content>
-                </Card>
-              </Card.Content>
-            </Card>
-            
-            {/* Widget Statut de l'Abonnement avec Tokens */}
-            <SubscriptionStatusWidget 
-              collapsed={!showSubscription} 
-              onToggleCollapse={() => setShowSubscription(!showSubscription)} 
-            />
-            
-            {/* Widget des transactions récentes */}
-            <Card style={styles.card}>
-              <Card.Content>
-                <TouchableOpacity 
-                  onPress={() => setShowTransactions(!showTransactions)}
-                  style={styles.cardHeader}
-                >
-                  <Title>{t('recent_transactions')}</Title>
-                  <IconButton 
-                    icon={showTransactions ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    onPress={() => setShowTransactions(!showTransactions)} 
-                  />
-                </TouchableOpacity>
-                
-                {showTransactions && (
-                  <RecentTransactionsWidget transactions={recentTransactions} />
-                )}
-              </Card.Content>
-            </Card>
-            
-            {/* Section Activités Récentes - Togglable */}
-            <Card style={styles.card}>
-              <Card.Content>
-                <TouchableOpacity 
-                  onPress={() => setShowActivities(!showActivities)}
-                  style={styles.cardHeader}
-                >
-                  <Title>{t('recent_activities')}</Title>
-                  <IconButton 
-                    icon={showActivities ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    onPress={() => setShowActivities(!showActivities)} 
-                  />
-                </TouchableOpacity>
-                
-                {showActivities && (
-                  <View style={styles.activitiesContainer}>
-                    {/* Contenu des activités récentes */}
-                  </View>
-                )}
-              </Card.Content>
-            </Card>
-          </View>
-        )}
+        {/* ...existing code... */}
       </ScrollView>
+
+      {/* Snackbar pour notification mode hors ligne */}
+      <Snackbar
+        visible={offlineSnackVisible}
+        onDismiss={() => setOfflineSnackVisible(false)}
+        duration={3000}
+        action={{
+          label: t('ok'),
+          onPress: () => setOfflineSnackVisible(false),
+        }}
+        style={styles.offlineSnackbar}
+      >
+        {t('offline_mode_enabled')}
+      </Snackbar>
       
-      {/* Dialogues d'information - aucun changement nécessaire ici */}
-      <Portal>
-        <Dialog 
-          visible={creditInfoVisible} 
-          onDismiss={() => setCreditInfoVisible(false)}
-          style={styles.dialog}
-        >
-          <Dialog.Title>{t('credit_score_information')}</Dialog.Title>
-          <Dialog.ScrollArea style={styles.dialogScrollArea}>
-            <ScrollView>
-              <Text style={styles.dialogSubtitle}>{t('what_is_credit_score')}</Text>
-              <Text style={styles.dialogText}>
-                La cote de crédit est une évaluation de votre solvabilité sur une échelle de 0 à 100. 
-                Elle est calculée automatiquement à partir de vos données comptables.
-                Elle est utilisée par les institutions financières pour déterminer le risque associé à vous accorder un crédit.
-              </Text>
-              
-              <Text style={styles.dialogSubtitle}>{t('score_ranges')}</Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#4CAF50'}]}>80-100: Excellent</Text>
-              <Text style={styles.dialogText}>
-                • Accès aux meilleures conditions de crédit
-                • Taux d'intérêt préférentiels
-                • Garantie de crédit minimale ou absente
-                • Accès prioritaire aux programmes de leasing d'équipements
-                • Conditions d'achat préférentielles chez les fournisseurs partenaires
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#8BC34A'}]}>60-79: Bon</Text>
-              <Text style={styles.dialogText}>
-                • Bonnes conditions de crédit
-                • Taux d'intérêt compétitifs
-                • Garantie de crédit partielle requise
-                • Accès aux programmes de leasing standard
-                • Conditions d'achat avantageuses
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#FFC107'}]}>40-59: Moyen</Text>
-              <Text style={styles.dialogText}>
-                • Accès limité au crédit
-                • Taux d'intérêt plus élevés
-                • Garantie substantielle requise
-                • Accès conditionnel aux programmes de leasing
-                • Conditions d'achat standards
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#FF9800'}]}>20-39: Risqué</Text>
-              <Text style={styles.dialogText}>
-                • Accès très limité au crédit
-                • Taux d'intérêt élevés
-                • Garantie complète requise
-                • Pas d'accès au leasing
-                • Paiement à l'avance requis chez certains fournisseurs
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#F44336'}]}>0-19: Critique</Text>
-              <Text style={styles.dialogText}>
-                • Accès au crédit généralement refusé
-                • Besoin d'un garant solide
-                • Conditions d'achat restrictives
-                • Plan de redressement financier recommandé
-              </Text>
-            </ScrollView>
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button onPress={() => setCreditInfoVisible(false)}>{t('close')}</Button>
-          </Dialog.Actions>
-        </Dialog>
-        
-        {/* Dialogue d'information sur la note ESG */}
-        <Dialog 
-          visible={esgInfoVisible} 
-          onDismiss={() => setEsgInfoVisible(false)}
-          style={styles.dialog}
-        >
-          <Dialog.Title>{t('esg_rating_information')}</Dialog.Title>
-          <Dialog.ScrollArea style={styles.dialogScrollArea}>
-            <ScrollView>
-              <Text style={styles.dialogSubtitle}>{t('what_is_esg')}</Text>
-              <Text style={styles.dialogText}>
-                La note ESG (Environnement, Social et Gouvernance) évalue les pratiques responsables de votre entreprise.
-                Elle reflète vos performances dans les domaines environnementaux, sociaux et de gouvernance d'entreprise.
-              </Text>
-              
-              <Text style={styles.dialogSubtitle}>{t('esg_rating_scale')}</Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#4CAF50'}]}>A+ / A : Excellence</Text>
-              <Text style={styles.dialogText}>
-                • Leadership exemplaire en matière de pratiques ESG
-                • Admissibilité aux financements verts et durables à taux préférentiels
-                • Attractivité accrue pour les investisseurs responsables
-                • Reconnaissance sur le marché comme leader en développement durable
-                • Avantages réputationnels significatifs
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#8BC34A'}]}>B+ / B : Bonne performance</Text>
-              <Text style={styles.dialogText}>
-                • Bonnes pratiques ESG au-dessus de la moyenne du secteur
-                • Accès à certains financements durables
-                • Image positive auprès des clients et partenaires
-                • Intégration efficace des principes de durabilité
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#FFC107'}]}>C+ / C : Performance moyenne</Text>
-              <Text style={styles.dialogText}>
-                • Conformité basique aux exigences ESG
-                • Risques ESG modérés
-                • Opportunités d'amélioration identifiées
-                • Nécessité d'une stratégie ESG plus robuste
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#FF9800'}]}>D+ / D : Performance limitée</Text>
-              <Text style={styles.dialogText}>
-                • Lacunes significatives dans les pratiques ESG
-                • Risques ESG élevés
-                • Accès limité aux financements verts
-                • Nécessité d'un plan d'action correctif
-              </Text>
-              
-              <Text style={[styles.scoreRangeTitle, {color: '#F44336'}]}>E+ / E : Performance insuffisante</Text>
-              <Text style={styles.dialogText}>
-                • Non-conformité aux standards ESG essentiels
-                • Risques réputationnels et réglementaires majeurs
-                • Exclusion possible de certains marchés et opportunités de financement
-                • Besoin urgent d'une transformation des pratiques
-              </Text>
-            </ScrollView>
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button onPress={() => setEsgInfoVisible(false)}>{t('close')}</Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      {/* ...existing code for Portal with dialogs... */}
     </OrientationAwareView>
   );
 };
@@ -805,7 +497,6 @@ const existingStyles = StyleSheet.create({
     margin: 0,
     padding: 0,
   },
-  // Styles pour les ratings (crédit et ESG)
   ratingsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -842,7 +533,6 @@ const existingStyles = StyleSheet.create({
     height: '80%',
     borderRadius: 6,
   },
-  // Styles pour les balances
   balancesContainer: {
     marginTop: 8,
   },
@@ -861,7 +551,6 @@ const existingStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  // Styles pour l'abonnement
   subscriptionContainer: {
     marginTop: 8,
   },
@@ -897,7 +586,6 @@ const existingStyles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
   },
-  // Styles pour les dialogues
   dialog: {
     maxHeight: '80%',
   },
@@ -978,7 +666,7 @@ const orientationStyles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   contentLandscape: {
-    padding: 12, // Légèrement réduit en mode paysage
+    padding: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
@@ -987,7 +675,41 @@ const orientationStyles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 6,
     marginBottom: 12,
-    minWidth: '48%', // Pour garantir un affichage sur deux colonnes
+    minWidth: '48%',
+  },
+});
+
+// Nouveaux styles pour la gestion du mode hors ligne
+const offlineStyles = StyleSheet.create({
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    padding: 4,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  offlineText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  offlineSnackbar: {
+    backgroundColor: '#455A64',
+  },
+  dataSourceBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  dataSourceBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
   },
 });
 
@@ -995,16 +717,7 @@ const styles = StyleSheet.create({
   ...existingStyles,
   ...additionalStyles,
   ...orientationStyles,
+  ...offlineStyles,
 });
 
 export default DashboardScreen;
-
-// Définir correctement la fonction setSubscriptionInfo au niveau du composant
-function setSubscriptionInfo(subscriptionData: { plan: string; expiryDate: Date; features: any[] }) {
-  // Vous pouvez implémenter cette fonction selon vos besoins
-  // Par exemple, mettre à jour un état local ou global, ou appeler une API
-  console.log('Subscription info updated:', subscriptionData);
-  
-  // Si vous avez un état global de gestion d'abonnement, vous pouvez l'utiliser ici
-  // Par exemple avec un hook personnalisé : useSubscription().updateSubscription(subscriptionData);
-}

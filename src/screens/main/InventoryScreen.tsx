@@ -1,33 +1,97 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
-import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, SegmentedButtons } from 'react-native-paper';
+import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, SegmentedButtons, Snackbar, Appbar } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { MainStackParamList } from '../../navigation/types';
 import AppHeader from '../../components/common/AppHeader';
-import InventoryService from '../../services/InventoryService';
-import { InventoryItem, InventoryTransaction, Supplier } from '../../services/InventoryService';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DatabaseService from '../../services/DatabaseService';
 import logger from '../../utils/logger';
 import CurrencyAmount from '../../components/common/CurrencyAmount';
 import { useCurrency } from '../../hooks/useCurrency';
 
+// Import du hook API d'inventaire
+import { useInventory } from '../../hooks/api/useInventory';
+
 const InventoryScreen = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const { formatAmount } = useCurrency();
-  const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<InventoryItem[]>([]);
-  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const netInfo = useNetInfo();
+  const isConnected = netInfo.isConnected;
+  
   const [activeTab, setActiveTab] = useState('products');
   const [searchQuery, setSearchQuery] = useState('');
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
+  // Utilisation du hook d'inventaire
+  const inventory = useInventory();
+  
+  // Récupération des produits avec gestion du cache
+  const { 
+    data: products, 
+    isLoading: isProductsLoading, 
+    error: productsError,
+    isFromCache: productsFromCache,
+    refresh: refetchProducts
+  } = inventory.useProducts({
+    search: searchQuery
+  });
+  
+  // Récupération des transactions (mouvements de stock)
+  const {
+    data: transactions,
+    isLoading: isTransactionsLoading,
+    error: transactionsError,
+    isFromCache: transactionsFromCache,
+    refresh: refetchTransactions
+  } = inventory.useStockMovements();
+  
+  // Récupération des fournisseurs
+  const {
+    data: suppliers,
+    isLoading: isSuppliersLoading,
+    error: suppliersError,
+    isFromCache: suppliersFromCache,
+    refresh: refetchSuppliers
+  } = inventory.useSuppliers();
+
+  // État de chargement combiné
+  const isLoading = isProductsLoading || isTransactionsLoading || isSuppliersLoading;
+  
+  // Fonction pour gérer les erreurs de chargement
+  const handleLoadingError = (error, entityType) => {
+    logger.error(`Erreur lors du chargement des ${entityType}:`, error);
+    
+    if (!isConnected) {
+      setSnackbarMessage(t('offline_mode_enabled'));
+      setSnackbarVisible(true);
+    } else {
+      Alert.alert(
+        t('error'),
+        t('error_loading_inventory_data'),
+        [{ text: t('ok') }]
+      );
+    }
+  };
+
+  // Gestion des erreurs API
   useEffect(() => {
-    // Initialiser les tables d'inventaire au démarrage
+    if (productsError) handleLoadingError(productsError, 'produits');
+    if (transactionsError) handleLoadingError(transactionsError, 'transactions');
+    if (suppliersError) handleLoadingError(suppliersError, 'fournisseurs');
+  }, [productsError, transactionsError, suppliersError]);
+
+  // Initialiser la BD locale pour l'inventaire
+  useEffect(() => {
     const initInventory = async () => {
       try {
-        await DatabaseService.initInventoryTables();
+        // Appel d'une méthode qui existe dans DatabaseService ou utilisation d'une alternative
+        await DatabaseService.initDatabase();
+        logger.info('Base de données initialisée pour l\'inventaire');
       } catch (error) {
         logger.error('Erreur lors de l\'initialisation des tables d\'inventaire:', error);
       }
@@ -36,46 +100,35 @@ const InventoryScreen = () => {
     initInventory();
   }, []);
 
+  // Effet pour détecter les changements de connectivité
   useEffect(() => {
-    const loadInventoryData = async () => {
-      try {
-        setLoading(true);
-        logger.info('Chargement des données d\'inventaire');
-        
-        // Charger les données en parallèle pour de meilleures performances
-        const [productsData, transactionsData, suppliersData] = await Promise.all([
-          InventoryService.getProducts(),
-          InventoryService.getInventoryTransactions(),
-          InventoryService.getSuppliers()
-        ]);
-        
-        setProducts(productsData);
-        setTransactions(transactionsData);
-        setSuppliers(suppliersData);
-        
-        logger.info(`Données chargées: ${productsData.length} produits, ${transactionsData.length} transactions, ${suppliersData.length} fournisseurs`);
-      } catch (error) {
-        logger.error('Erreur lors du chargement des données d\'inventaire:', error);
-        Alert.alert(
-          t('error'),
-          t('error_loading_inventory_data'),
-          [{ text: t('ok') }]
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadInventoryData();
-  }, [t]);
+    if (isConnected === false) {
+      setSnackbarMessage(t('offline_mode_enabled'));
+      setSnackbarVisible(true);
+    } else if (isConnected === true && (productsFromCache || transactionsFromCache || suppliersFromCache)) {
+      setSnackbarMessage(t('using_cached_data'));
+      setSnackbarVisible(true);
+    }
+  }, [isConnected, productsFromCache, transactionsFromCache, suppliersFromCache]);
 
   // Filtrer les produits selon la recherche
-  const filteredProducts = products.filter(product => 
+  const filteredProducts = products?.filter(product => 
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    product.sku?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
 
-  const renderProduct = ({ item }: { item: InventoryItem }) => {
+  // Fonction pour actualiser les données
+  const refreshData = () => {
+    if (activeTab === 'products') {
+      refetchProducts();
+    } else if (activeTab === 'transactions') {
+      refetchTransactions();
+    } else if (activeTab === 'suppliers') {
+      refetchSuppliers();
+    }
+  };
+
+  const renderProduct = ({ item }) => {
     const isLowStock = item.quantity <= item.reorderPoint;
 
     return (
@@ -85,6 +138,12 @@ const InventoryScreen = () => {
           navigation.navigate('ProductDetails' as any, { productId: item.id } as any);
         }}
       >
+        {productsFromCache && (
+          <View style={styles.cacheBadge}>
+            <MaterialCommunityIcons name="database" size={12} color="#FFF" />
+          </View>
+        )}
+        
         <Card.Content>
           <View style={styles.productHeader}>
             <View>
@@ -117,7 +176,7 @@ const InventoryScreen = () => {
     );
   };
 
-  const renderTransaction = ({ item }: { item: InventoryTransaction }) => {
+  const renderTransaction = ({ item }) => {
     return (
       <Card 
         style={styles.transactionCard} 
@@ -125,6 +184,12 @@ const InventoryScreen = () => {
           navigation.navigate('TransactionDetails' as any, { transactionId: item.id } as any);
         }}
       >
+        {transactionsFromCache && (
+          <View style={styles.cacheBadge}>
+            <MaterialCommunityIcons name="database" size={12} color="#FFF" />
+          </View>
+        )}
+        
         <Card.Content>
           <View style={styles.transactionHeader}>
             <View>
@@ -138,7 +203,7 @@ const InventoryScreen = () => {
           </View>
           
           <View style={styles.transactionDetails}>
-            <Text>{t('items_count', { count: item.items.length })}</Text>
+            <Text>{t('items_count', { count: item.items?.length || 0 })}</Text>
             {item.totalAmount > 0 && (
               <Text style={styles.transactionAmount}>{formatAmount(item.totalAmount)}</Text>
             )}
@@ -152,7 +217,7 @@ const InventoryScreen = () => {
     );
   };
 
-  const renderSupplier = ({ item }: { item: Supplier }) => {
+  const renderSupplier = ({ item }) => {
     return (
       <Card 
         style={styles.supplierCard} 
@@ -160,6 +225,12 @@ const InventoryScreen = () => {
           navigation.navigate('SupplierDetails' as any, { supplierId: item.id } as any);
         }}
       >
+        {suppliersFromCache && (
+          <View style={styles.cacheBadge}>
+            <MaterialCommunityIcons name="database" size={12} color="#FFF" />
+          </View>
+        )}
+        
         <Card.Content>
           <Text style={styles.supplierName}>{item.name}</Text>
           <Text style={styles.supplierContactName}>{item.contactPerson}</Text>
@@ -181,7 +252,31 @@ const InventoryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <AppHeader title={t('inventory')} showBack={false} />
+      <AppHeader 
+        title={t('inventory')} 
+        showBack={false} 
+        rightAction={
+          <Appbar.Action 
+            icon="refresh" 
+            onPress={refreshData}
+            disabled={isLoading} 
+          />
+        }
+      />
+      
+      {/* Indicateur de mode hors ligne ou données issues du cache */}
+      {(!isConnected || productsFromCache || transactionsFromCache || suppliersFromCache) && (
+        <View style={styles.offlineIndicator}>
+          <MaterialCommunityIcons 
+            name={isConnected ? "database" : "wifi-off"} 
+            size={16} 
+            color="#FFF" 
+          />
+          <Text style={styles.offlineText}>
+            {isConnected ? t('using_cached_data') : t('offline_mode')}
+          </Text>
+        </View>
+      )}
       
       <SegmentedButtons
         value={activeTab}
@@ -194,7 +289,7 @@ const InventoryScreen = () => {
         style={styles.segmentedButtons}
       />
       
-      {loading ? (
+      {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
           <Text style={styles.loadingText}>{t('loading_data')}</Text>
@@ -212,7 +307,7 @@ const InventoryScreen = () => {
               
               <FlatList
                 data={filteredProducts}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => item.id.toString()}
                 renderItem={renderProduct}
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
@@ -226,6 +321,7 @@ const InventoryScreen = () => {
                 onPress={() => {
                   navigation.navigate('AddProduct' as any);
                 }}
+                disabled={!isConnected}
               />
             </>
           )}
@@ -233,8 +329,8 @@ const InventoryScreen = () => {
           {activeTab === 'transactions' && (
             <>
               <FlatList
-                data={transactions}
-                keyExtractor={(item) => item.id}
+                data={transactions || []}
+                keyExtractor={(item) => item.id.toString()}
                 renderItem={renderTransaction}
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
@@ -248,6 +344,7 @@ const InventoryScreen = () => {
                 onPress={() => {
                   navigation.navigate('CreateTransaction' as any);
                 }}
+                disabled={!isConnected}
               />
             </>
           )}
@@ -255,8 +352,8 @@ const InventoryScreen = () => {
           {activeTab === 'suppliers' && (
             <>
               <FlatList
-                data={suppliers}
-                keyExtractor={(item) => item.id}
+                data={suppliers || []}
+                keyExtractor={(item) => item.id.toString()}
                 renderItem={renderSupplier}
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
@@ -270,11 +367,25 @@ const InventoryScreen = () => {
                 onPress={() => {
                   navigation.navigate('AddSupplier' as any);
                 }}
+                disabled={!isConnected}
               />
             </>
           )}
         </>
       )}
+
+      {/* Snackbar pour les notifications */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{
+          label: t('ok'),
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   );
 };
@@ -320,6 +431,7 @@ const styles = StyleSheet.create({
   // Produits
   productCard: {
     marginBottom: 16,
+    position: 'relative',
   },
   productHeader: {
     flexDirection: 'row',
@@ -355,6 +467,7 @@ const styles = StyleSheet.create({
   // Transactions
   transactionCard: {
     marginBottom: 16,
+    position: 'relative',
   },
   transactionHeader: {
     flexDirection: 'row',
@@ -391,6 +504,7 @@ const styles = StyleSheet.create({
   // Suppliers
   supplierCard: {
     marginBottom: 16,
+    position: 'relative',
   },
   supplierName: {
     fontSize: 16,
@@ -414,6 +528,33 @@ const styles = StyleSheet.create({
   },
   contactValue: {
     fontWeight: '500',
+  },
+  // Offline indicator
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    padding: 4,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  offlineText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  cacheBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
 });
 

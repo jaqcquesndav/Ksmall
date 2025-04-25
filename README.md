@@ -4,6 +4,72 @@ This is a new [**React Native**](https://reactnative.dev) project, bootstrapped 
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
+# Architecture de flux de données - KSmall
+
+## Vue d'ensemble
+
+Cette application utilise une architecture de flux de données robuste qui permet :
+- Une utilisation transparente en mode connecté et hors ligne
+- Une synchronisation automatique des données lors du retour en ligne
+- Un mode démo fonctionnel, activé automatiquement sur Android
+
+## Composants principaux
+
+- **AuthContext** : Gère l'authentification et la session utilisateur
+- **ApiService** : Service principal pour les communications backend avec support hors ligne
+- **DatabaseContext** : Assure la persistance locale des données
+- **Contexts divers** : CurrencyContext, ThemeContext, etc.
+
+## Flux par fonctionnalité
+
+### Authentification
+- **Login** : Utilise les identifiants stockés en mode hors ligne, l'API en mode connecté
+- **Signup** : Disponible uniquement en mode connecté
+- **Forgot Password** : Désactivé en mode hors ligne
+
+### Gestion des profils
+- Profils initialisés au démarrage dans App.tsx
+- Données persistées localement 
+- Synchronisation via file d'attente hors ligne
+
+### Dashboard
+- Données chargées via API en mode connecté
+- Données fallback utilisées en mode hors ligne
+- Notifications d'état de connexion pour l'utilisateur
+
+### Comptabilité
+- Transactions synchronisées et stockées localement
+- Mode démo distinct pour les données comptables
+- Interopérabilité entre journal, grand livre, etc.
+
+## Points forts
+
+1. **Gestion hors ligne robuste** : File d'attente, synchronisation automatique
+2. **Fallback intelligent** : Implémentations API différentes selon la plateforme
+3. **Mode démo cohérent** : Activation automatique sur Android, données réalistes
+
+## Points d'amélioration possibles
+
+1. **Gestion des conflits** : Améliorer l'interface de résolution des conflits lors de la synchronisation
+   - L'application dispose d'un `ConflictResolutionModal` mais son intégration doit être optimisée
+   - Ajouter une stratégie intelligente de résolution automatique des conflits mineurs
+
+2. **Indicateurs de synchronisation** : Renforcer le feedback visuel
+   - Implémenter des indicateurs visuels plus clairs pendant les processus de synchronisation
+   - Ajouter des notifications de progression pour les synchronisations volumineuses
+   - Créer un écran dédié à la gestion des synchronisations en attente
+
+3. **Tests de fiabilité** : Augmenter la couverture de test des scénarios hors ligne
+   - Tester davantage les scénarios de perte de connexion pendant une opération
+   - Valider la robustesse des migrations de schéma de base de données locale
+
+## Mode démo
+
+Le mode démo est automatiquement activé dans les cas suivants :
+- Sur la plateforme Android
+- En cas d'erreur lors de l'initialisation de l'application
+- En cas d'erreurs réseau persistantes
+
 ## Step 1: Start Metro
 
 First, you will need to run **Metro**, the JavaScript build tool for React Native.

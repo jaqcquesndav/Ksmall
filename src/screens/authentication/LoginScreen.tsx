@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,32 +7,86 @@ import {
   Platform,
   Alert
 } from 'react-native';
-import { TextInput, Button, Text, Title, useTheme, HelperText } from 'react-native-paper';
+import { TextInput, Button, Text, Title, useTheme, HelperText, Snackbar } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth as useAuthContext } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/api/useAuth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNetInfo } from '@react-native-community/netinfo';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const netInfo = useNetInfo();
+  const isConnected = netInfo.isConnected;
   
-  // Make sure we destructure and store the login function at the component level
+  // Context d'authentification (pour maintenir la compatibilité avec le reste de l'app)
+  const authContext = useAuthContext();
+  
+  // Hook d'authentification API avec fonctionnalités avancées
   const auth = useAuth();
-  const { login } = auth;
+  const { execute: loginApi, isLoading: isApiLoading, error: loginError } = auth.login;
   
-  console.log("🛠️ Auth object check:", { 
-    authExists: !!auth, 
-    loginFunction: typeof login === 'function' ? 'Available' : 'NOT AVAILABLE' 
-  });
-  
+  // États
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{email?: string; password?: string}>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [savedCredentials, setSavedCredentials] = useState<{email: string; password: string} | null>(null);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+
+  // Vérifier la disponibilité de l'authentification biométrique
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      setBiometricsAvailable(compatible && enrolled);
+    };
+    
+    checkBiometrics();
+  }, []);
+
+  // Vérifier si des identifiants ont été sauvegardés pour le mode hors ligne
+  useEffect(() => {
+    const checkSavedCredentials = async () => {
+      try {
+        const credentials = await AsyncStorage.getItem('saved_credentials');
+        if (credentials) {
+          const parsed = JSON.parse(credentials);
+          setSavedCredentials(parsed);
+          
+          // Pré-remplir l'email si disponible
+          if (parsed.email) {
+            setEmail(parsed.email);
+          }
+        }
+      } catch (error) {
+        console.error('Erreur lors de la récupération des identifiants sauvegardés:', error);
+      }
+    };
+    
+    checkSavedCredentials();
+  }, []);
+
+  // Afficher une notification si l'utilisateur est hors ligne
+  useEffect(() => {
+    if (isConnected === false) {
+      setOfflineMode(true);
+      setSnackbarMessage(t('offline_mode_login'));
+      setSnackbarVisible(true);
+    } else {
+      setOfflineMode(false);
+    }
+  }, [isConnected]);
 
   // Validation d'email simple
   const validateEmail = (email: string) => {
@@ -40,9 +94,48 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     return emailRegex.test(email);
   };
 
-  const handleLogin = async () => {
+  // Fonction pour tenter l'authentification biométrique
+  const authenticateWithBiometrics = async () => {
+    if (!savedCredentials) {
+      setSnackbarMessage(t('no_saved_credentials'));
+      setSnackbarVisible(true);
+      return;
+    }
+    
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: t('biometric_login'),
+        fallbackLabel: t('use_password'),
+        disableDeviceFallback: false
+      });
+      
+      if (result.success) {
+        // Si l'authentification biométrique réussit, utiliser les identifiants sauvegardés
+        setEmail(savedCredentials.email);
+        setPassword(savedCredentials.password);
+        
+        // Connecter l'utilisateur avec les identifiants sauvegardés
+        if (offlineMode) {
+          // Utiliser directement le context d'authentification pour le mode hors ligne
+          authContext.login(savedCredentials.email, savedCredentials.password);
+        } else {
+          // En mode connecté, utiliser l'API
+          handleLogin(true);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'authentification biométrique:', error);
+      setSnackbarMessage(t('biometric_error'));
+      setSnackbarVisible(true);
+    }
+  };
+
+  const handleLogin = async (isBiometric = false) => {
+    // Si c'est une authentification biométrique, nous avons déjà les identifiants
+    const loginEmail = isBiometric ? savedCredentials?.email || email : email;
+    const loginPassword = isBiometric ? savedCredentials?.password || password : password;
+    
     console.log("🖱️ Login button pressed");
-    console.log("📝 Form data:", { email, password: password.replace(/./g, '*') });
     
     // Reset des erreurs
     setErrors({});
@@ -51,15 +144,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     let isValid = true;
     const newErrors: {email?: string; password?: string} = {};
     
-    if (!email) {
+    if (!loginEmail) {
       newErrors.email = t('email_required');
       isValid = false;
-    } else if (!validateEmail(email)) {
+    } else if (!validateEmail(loginEmail)) {
       newErrors.email = t('invalid_email');
       isValid = false;
     }
     
-    if (!password) {
+    if (!loginPassword) {
       newErrors.password = t('password_required');
       isValid = false;
     }
@@ -70,42 +163,78 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       return;
     }
     
-    console.log("✅ Form validation passed, attempting login");
-    
-    // Vérifier si la fonction login existe
-    if (typeof login !== 'function') {
-      console.error("❌ Login function is not available:", login);
-      Alert.alert(
-        "Erreur",
-        "Impossible de se connecter: service d'authentification non disponible."
-      );
-      return;
-    }
-    
-    // Tentative de connexion
+    // Connecter différemment selon le mode (connecté ou non)
     setLoading(true);
+    
     try {
-      console.log("🔄 Login function type:", typeof login);
-      await login(email, password);
-      console.log("✅ Login successful");
+      if (offlineMode) {
+        // En mode hors ligne, on vérifie si les identifiants correspondent à ceux enregistrés
+        if (savedCredentials && 
+            savedCredentials.email === loginEmail && 
+            savedCredentials.password === loginPassword) {
+          
+          // Utiliser le context d'authentification directement en mode hors ligne
+          await authContext.login(loginEmail, loginPassword);
+          console.log("✅ Offline login successful");
+          
+          // Afficher une notification de succès du mode hors ligne
+          setSnackbarMessage(t('offline_login_success'));
+          setSnackbarVisible(true);
+        } else {
+          throw new Error(t('offline_login_failed'));
+        }
+      } else {
+        // En mode connecté, utiliser notre hook API
+        const response = await loginApi(loginEmail, loginPassword);
+        
+        // Si la connexion réussit, mettre à jour le context d'authentification
+        if (response && response.user && response.token) {
+          authContext.login(loginEmail, loginPassword);
+          
+          // Sauvegarder les identifiants pour une utilisation hors ligne
+          await AsyncStorage.setItem('saved_credentials', JSON.stringify({
+            email: loginEmail,
+            password: loginPassword
+          }));
+          
+          console.log("✅ Online login successful");
+        } else {
+          throw new Error(t('invalid_credentials'));
+        }
+      }
     } catch (error: any) {
-      console.error("❌ Login function threw an exception:", error);
+      console.error("❌ Login error:", error);
+      
+      // Afficher un message différent selon le mode
+      const errorMessage = offlineMode 
+        ? t('offline_invalid_credentials') 
+        : error?.message || t('invalid_credentials');
+      
       Alert.alert(
         t('login_failed'),
-        error?.message || t('invalid_credentials'),
+        errorMessage,
         [{ text: t('ok') }]
       );
     } finally {
-      console.log("🔄 Login process complete, setting loading to false");
       setLoading(false);
     }
   };
 
   const handleForgotPassword = () => {
+    if (offlineMode) {
+      setSnackbarMessage(t('feature_unavailable_offline'));
+      setSnackbarVisible(true);
+      return;
+    }
     navigation.navigate('ForgotPassword');
   };
 
   const handleSignup = () => {
+    if (offlineMode) {
+      setSnackbarMessage(t('feature_unavailable_offline'));
+      setSnackbarVisible(true);
+      return;
+    }
     navigation.navigate("Register");
   };
 
@@ -118,6 +247,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         <Title style={styles.title}>
           {t('login_title')}
         </Title>
+
+        {/* Indicateur de mode hors ligne */}
+        {offlineMode && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>
+              {t('offline_mode')}
+            </Text>
+          </View>
+        )}
 
         {/* Message informatif pour le compte de démonstration */}
         <View style={styles.demoAccountInfo}>
@@ -173,19 +311,32 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           mode="text"
           onPress={handleForgotPassword}
           style={styles.forgotPasswordButton}
+          disabled={offlineMode}
         >
           {t('forgot_password')}
         </Button>
 
         <Button
           mode="contained"
-          onPress={handleLogin}
+          onPress={() => handleLogin(false)}
           style={styles.loginButton}
           loading={loading}
           disabled={loading}
         >
           {t('login')}
         </Button>
+
+        {/* Bouton d'authentification biométrique si disponible et des identifiants sont sauvegardés */}
+        {biometricsAvailable && savedCredentials && (
+          <Button
+            mode="outlined"
+            icon="fingerprint"
+            onPress={authenticateWithBiometrics}
+            style={styles.biometricButton}
+          >
+            {t('login_with_biometrics')}
+          </Button>
+        )}
 
         <View style={styles.separator}>
           <View style={styles.line} />
@@ -198,6 +349,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           icon="google"
           onPress={() => {}}
           style={styles.googleButton}
+          disabled={offlineMode}
         >
           {t('login_with_google')}
         </Button>
@@ -210,11 +362,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             mode="text"
             onPress={handleSignup}
             style={styles.signupButton}
+            disabled={offlineMode}
           >
             {t('sign_up')}
           </Button>
         </View>
       </ScrollView>
+
+      {/* Snackbar pour les notifications */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{
+          label: t('ok'),
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </KeyboardAvoidingView>
   );
 };
@@ -268,6 +434,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingVertical: 8,
   },
+  biometricButton: {
+    width: '100%',
+    marginTop: 16,
+  },
   separator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -297,6 +467,18 @@ const styles = StyleSheet.create({
   },
   signupButton: {
     marginLeft: 8,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
 });
 
