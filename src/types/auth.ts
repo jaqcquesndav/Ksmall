@@ -10,4 +10,9 @@ export interface User {
   position?: string;
   language?: string;
   company?: string;
+  role?: string;
+  isDemo: boolean;
+  provider?: string;
+  // Add index signature for compatibility with AuthContext
+  [key: string]: string | boolean | null | undefined;
 }

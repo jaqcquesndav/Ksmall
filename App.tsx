@@ -15,6 +15,8 @@ import { api } from './src/services'; // Importer le proxy API
 import './src/i18n'; // Import translations
 import logger from './src/utils/logger';
 import ErrorBoundary from './src/components/error/ErrorBoundary';
+import NetworkStatusListener from './src/components/common/NetworkStatusListener';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Définir la variable globale pour le mode démo
 declare global {
@@ -34,16 +36,19 @@ const ThemedApp = () => {
   
   return (
     <PaperProvider theme={theme}>
-      <AuthProvider>
-        <CurrencyProvider>
-          <PaymentProvider>
-            <NavigationContainer>
-              <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
-              <RootNavigator />
-            </NavigationContainer>
-          </PaymentProvider>
-        </CurrencyProvider>
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <CurrencyProvider>
+            <PaymentProvider>
+              <NavigationContainer>
+                <StatusBar backgroundColor={theme.colors.primary} barStyle="light-content" />
+                <NetworkStatusListener />
+                <RootNavigator />
+              </NavigationContainer>
+            </PaymentProvider>
+          </CurrencyProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
     </PaperProvider>
   );
 };

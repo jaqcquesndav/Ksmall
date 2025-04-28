@@ -13,17 +13,32 @@ export function useAuth() {
   // Use the provided hook from the context file
   const authContext = useAuthContext();
   
+  // Helper function to safely call API methods
+  const safeApiCall = async (apiMethod, ...args) => {
+    if (!API || !API.auth || typeof API.auth[apiMethod] !== 'function') {
+      logger.error(`API.auth.${apiMethod} is not available`);
+      throw new Error(`Authentication service not available`);
+    }
+    return API.auth[apiMethod](...args);
+  };
+  
   /**
    * Hook pour la connexion utilisateur
    */
   const login = useApi(
-    (email: string, password: string) => {
+    async (email: string, password: string) => {
       // Capture email and password in closure for later use in onSuccess
       const authCredentials = { email, password };
-      return API.auth.login(email, password).then(response => {
+      try {
+        const response = await safeApiCall('login', email, password);
         // Attach the credentials to the response for access in onSuccess
         return { ...response, _authCredentials: authCredentials };
-      });
+      } catch (error) {
+        // Use offline demo login if API is not available
+        logger.warn('API login failed, using offline authentication');
+        // Return null to prevent further processing but don't throw an error
+        return null;
+      }
     },
     {
       autoFetch: false,
@@ -31,6 +46,9 @@ export function useAuth() {
         if (response?.user && response?.token) {
           // Access the captured credentials
           authContext.login(response._authCredentials.email, response._authCredentials.password);
+        } else if (response === null) {
+          // Handle null response from API not being available
+          // We'll let the LoginScreen component handle this
         }
       }
     }
@@ -40,13 +58,17 @@ export function useAuth() {
    * Hook pour l'inscription utilisateur
    */
   const register = useApi(
-    (userData: { email: string; password: string; displayName: string; phoneNumber?: string }) => {
+    async (userData: { email: string; password: string; displayName: string; phoneNumber?: string }) => {
       // Capture the userData in closure for later use
       const userRegistrationData = { ...userData };
-      return API.auth.register(userData).then(response => {
+      try {
+        const response = await safeApiCall('register', userData);
         // Attach userData to the response
         return { ...response, _userData: userRegistrationData };
-      });
+      } catch (error) {
+        logger.error('Failed to register user', error);
+        throw error;
+      }
     },
     {
       autoFetch: false,
@@ -63,7 +85,14 @@ export function useAuth() {
    * Hook pour la récupération du mot de passe
    */
   const forgotPassword = useApi(
-    (email: string) => API.auth.forgotPassword(email),
+    async (email: string) => {
+      try {
+        return await safeApiCall('forgotPassword', email);
+      } catch (error) {
+        logger.error('Failed to send forgot password email', error);
+        throw error;
+      }
+    },
     { autoFetch: false }
   );
 
@@ -71,7 +100,14 @@ export function useAuth() {
    * Hook pour réinitialiser le mot de passe
    */
   const resetPassword = useApi(
-    (token: string, newPassword: string) => API.auth.resetPassword(token, newPassword),
+    async (token: string, newPassword: string) => {
+      try {
+        return await safeApiCall('resetPassword', token, newPassword);
+      } catch (error) {
+        logger.error('Failed to reset password', error);
+        throw error;
+      }
+    },
     { autoFetch: false }
   );
 
@@ -79,7 +115,14 @@ export function useAuth() {
    * Hook pour la vérification de l'email
    */
   const verifyEmail = useApi(
-    (token: string) => API.auth.verifyEmail(token),
+    async (token: string) => {
+      try {
+        return await safeApiCall('verifyEmail', token);
+      } catch (error) {
+        logger.error('Failed to verify email', error);
+        throw error;
+      }
+    },
     { autoFetch: false }
   );
 
@@ -87,7 +130,14 @@ export function useAuth() {
    * Hook pour récupérer les informations de l'utilisateur courant
    */
   const currentUser = useApi(
-    () => API.auth.getCurrentUser(),
+    async () => {
+      try {
+        return await safeApiCall('getCurrentUser');
+      } catch (error) {
+        logger.warn('Failed to get current user from API');
+        return null;
+      }
+    },
     {
       autoFetch: false,
       fetchOnFocus: true,
@@ -103,7 +153,14 @@ export function useAuth() {
    * Hook pour mettre à jour le profil utilisateur
    */
   const updateProfile = useApi(
-    (userData: Partial<User>) => API.auth.updateProfile(userData),
+    async (userData: Partial<User>) => {
+      try {
+        return await safeApiCall('updateProfile', userData);
+      } catch (error) {
+        logger.error('Failed to update profile', error);
+        throw error;
+      }
+    },
     {
       autoFetch: false,
       onSuccess: (user) => {
@@ -118,8 +175,14 @@ export function useAuth() {
    * Hook pour changer le mot de passe
    */
   const changePassword = useApi(
-    (currentPassword: string, newPassword: string) => 
-      API.auth.changePassword(currentPassword, newPassword),
+    async (currentPassword: string, newPassword: string) => {
+      try {
+        return await safeApiCall('changePassword', currentPassword, newPassword);
+      } catch (error) {
+        logger.error('Failed to change password', error);
+        throw error;
+      }
+    },
     { autoFetch: false }
   );
 
@@ -128,7 +191,9 @@ export function useAuth() {
    */
   const logout = useCallback(async () => {
     try {
-      await API.auth.logout();
+      if (API && API.auth && typeof API.auth.logout === 'function') {
+        await API.auth.logout();
+      }
     } catch (error) {
       logger.error('Erreur lors de la déconnexion', error);
     } finally {

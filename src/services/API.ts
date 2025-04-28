@@ -8,6 +8,7 @@
 
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
+import AuthApiService from './api/auth/AuthApiService';
 
 // Import conditionnel pour éviter le bundling d'axios sur Android
 let api: any;
@@ -43,3 +44,30 @@ export const del = api.delete.bind(api);
 export const uploadFile = api.uploadFile?.bind(api);
 export const isDemoMode = api.isDemoMode?.bind(api);
 export const enableDemoMode = api.enableDemoMode?.bind(api);
+
+/**
+ * Main API service that integrates all microservices
+ */
+const API = {
+  /**
+   * Authentication services
+   */
+  auth: AuthApiService,
+  
+  /**
+   * Process any queued requests when coming back online
+   * This should be called when the app detects a connection after being offline
+   */
+  async processOfflineQueue() {
+    // Import dynamically to avoid circular dependencies
+    const { authHttp, accountingHttp, inventoryHttp, portfolioHttp } = await import('./api/HttpInterceptor');
+    
+    // Process queued requests for each service
+    await authHttp.processQueue();
+    await accountingHttp.processQueue();
+    await inventoryHttp.processQueue();
+    await portfolioHttp.processQueue();
+  }
+};
+
+export { API };

@@ -1,10 +1,17 @@
-import ApiService from '../ApiService';
+import { authHttp } from '../HttpInterceptor';
 import { User } from '../../../types/auth';
+import { 
+  saveAccessToken,
+  saveRefreshToken,
+  saveIdToken,
+  saveUserInfo,
+  saveTokenExpiry,
+  clearTokens
+} from '../../auth/TokenStorage';
 import logger from '../../../utils/logger';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
- * Interface pour la requête de connexion
+ * Interface for the login request
  */
 export interface LoginRequest {
   email: string;
@@ -12,274 +19,219 @@ export interface LoginRequest {
 }
 
 /**
- * Interface pour la requête d'inscription
+ * Interface for the registration request
  */
 export interface RegisterRequest {
   email: string;
   password: string;
   displayName: string;
   phoneNumber?: string;
-  companyName?: string;
-  position?: string;
-  language?: string;
 }
 
 /**
- * Interface pour la réponse d'authentification
+ * Interface for the authentication response
  */
 export interface AuthResponse {
   user: User;
   token: string;
   refreshToken: string;
+  idToken?: string;
   expiresAt: number;
+  // Ajout d'une signature d'index pour satisfaire la contrainte Record<string, unknown>
+  [key: string]: unknown;
 }
 
 /**
- * Service API pour l'authentification
+ * Authentication API Service
+ * Handles authentication operations with the Auth microservice
  */
 class AuthApiService {
-  private static readonly BASE_PATH = '/auth';
-
   /**
-   * Connexion à l'API
+   * Login to the API
    */
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     try {
-      const response = await ApiService.post<AuthResponse>(
-        `${AuthApiService.BASE_PATH}/login`,
-        credentials,
-        false // Désactiver le support hors ligne pour les opérations d'auth
-      );
+      const response = await authHttp.post<AuthResponse>('/login', credentials, { requiresAuth: false });
       
-      // Stocker le token d'authentification
+      // Store tokens securely
       if (response?.token) {
-        await AsyncStorage.setItem('auth_token', response.token);
-        await AsyncStorage.setItem('refresh_token', response.refreshToken);
-        await AsyncStorage.setItem('token_expires_at', response.expiresAt.toString());
-        await AsyncStorage.setItem('current_user', JSON.stringify(response.user));
-      }
-      
-      return response;
-    } catch (error) {
-      logger.error('Erreur lors de la connexion', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Inscription à l'API
-   */
-  async register(userData: RegisterRequest): Promise<AuthResponse> {
-    try {
-      const response = await ApiService.post<AuthResponse>(
-        `${AuthApiService.BASE_PATH}/register`,
-        userData,
-        false // Désactiver le support hors ligne pour les opérations d'auth
-      );
-      
-      // Stocker le token d'authentification
-      if (response?.token) {
-        await AsyncStorage.setItem('auth_token', response.token);
-        await AsyncStorage.setItem('refresh_token', response.refreshToken);
-        await AsyncStorage.setItem('token_expires_at', response.expiresAt.toString());
-        await AsyncStorage.setItem('current_user', JSON.stringify(response.user));
-      }
-      
-      return response;
-    } catch (error) {
-      logger.error('Erreur lors de l\'inscription', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Déconnexion de l'API
-   */
-  async logout(): Promise<boolean> {
-    try {
-      // Appel au backend pour invalider le token
-      try {
-        await ApiService.post(`${AuthApiService.BASE_PATH}/logout`, {}, false);
-      } catch (error) {
-        // Ignorer les erreurs de backend lors de la déconnexion
-        logger.warn('Erreur lors de la déconnexion côté backend', error);
-      }
-
-      // Supprimer les données d'authentification locales
-      await AsyncStorage.removeItem('auth_token');
-      await AsyncStorage.removeItem('refresh_token');
-      await AsyncStorage.removeItem('token_expires_at');
-      await AsyncStorage.removeItem('current_user');
-      
-      return true;
-    } catch (error) {
-      logger.error('Erreur lors de la déconnexion', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Rafraîchit le token d'authentification
-   */
-  async refreshToken(): Promise<string> {
-    try {
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
-      
-      if (!refreshToken) {
-        throw new Error('Pas de refresh token disponible');
-      }
-      
-      const response = await ApiService.post<{ token: string; expiresAt: number }>(
-        `${AuthApiService.BASE_PATH}/refresh-token`,
-        { refreshToken },
-        false
-      );
-      
-      if (response?.token) {
-        await AsyncStorage.setItem('auth_token', response.token);
-        await AsyncStorage.setItem('token_expires_at', response.expiresAt.toString());
-        return response.token;
-      }
-      
-      throw new Error('Échec du rafraîchissement du token');
-    } catch (error) {
-      logger.error('Erreur lors du rafraîchissement du token', error);
-      
-      // Si le refresh token est invalide, déconnecter l'utilisateur
-      if ((error as Error).message.includes('invalide') || (error as any).status === 401) {
-        await this.logout();
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Réinitialisation du mot de passe
-   */
-  async requestPasswordReset(email: string): Promise<boolean> {
-    try {
-      await ApiService.post(
-        `${AuthApiService.BASE_PATH}/forgot-password`,
-        { email },
-        false
-      );
-      return true;
-    } catch (error) {
-      logger.error('Erreur lors de la demande de réinitialisation du mot de passe', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Vérification de l'état d'authentification actuel
-   */
-  async checkAuthStatus(): Promise<{ isAuthenticated: boolean; user?: User }> {
-    try {
-      const token = await AsyncStorage.getItem('auth_token');
-      const expiresAt = await AsyncStorage.getItem('token_expires_at');
-      const userJson = await AsyncStorage.getItem('current_user');
-      
-      if (!token || !expiresAt || !userJson) {
-        return { isAuthenticated: false };
-      }
-      
-      // Vérifier si le token est expiré
-      const expiryTime = parseInt(expiresAt, 10);
-      const currentTime = Date.now();
-      
-      if (currentTime >= expiryTime) {
-        try {
-          // Token expiré, essayer de le rafraîchir
-          await this.refreshToken();
-          const updatedUserJson = await AsyncStorage.getItem('current_user');
-          
-          if (updatedUserJson) {
-            return {
-              isAuthenticated: true,
-              user: JSON.parse(updatedUserJson)
-            };
-          }
-        } catch (refreshError) {
-          // Échec du rafraîchissement, considérer comme non authentifié
-          return { isAuthenticated: false };
+        await saveAccessToken(response.token);
+        await saveRefreshToken(response.refreshToken);
+        if (response.idToken) {
+          await saveIdToken(response.idToken);
+        }
+        await saveTokenExpiry(response.expiresAt);
+        
+        // Store user info
+        if (response.user) {
+          await saveUserInfo(response.user);
         }
       }
       
-      // Token valide, retourner l'utilisateur
-      return {
-        isAuthenticated: true,
-        user: JSON.parse(userJson)
-      };
+      return response;
     } catch (error) {
-      logger.error('Erreur lors de la vérification de l\'état d\'authentification', error);
-      return { isAuthenticated: false };
+      logger.error('Login error', error);
+      throw error;
     }
   }
-
+  
   /**
-   * Mise à jour du profil utilisateur
+   * Register a new user
    */
-  async updateProfile(userData: Partial<User>): Promise<User> {
+  async register(userData: RegisterRequest): Promise<AuthResponse> {
     try {
-      const response = await ApiService.put<User>(
-        `${AuthApiService.BASE_PATH}/profile`,
-        userData
-      );
+      const response = await authHttp.post<AuthResponse>('/register', userData, { requiresAuth: false });
       
-      // Mettre à jour l'utilisateur stocké localement
-      const currentUserJson = await AsyncStorage.getItem('current_user');
-      if (currentUserJson) {
-        const currentUser = JSON.parse(currentUserJson);
-        const updatedUser = { ...currentUser, ...response };
-        await AsyncStorage.setItem('current_user', JSON.stringify(updatedUser));
+      // Store tokens securely
+      if (response?.token) {
+        await saveAccessToken(response.token);
+        await saveRefreshToken(response.refreshToken);
+        if (response.idToken) {
+          await saveIdToken(response.idToken);
+        }
+        await saveTokenExpiry(response.expiresAt);
+        
+        // Store user info
+        if (response.user) {
+          await saveUserInfo(response.user);
+        }
       }
       
       return response;
     } catch (error) {
-      logger.error('Erreur lors de la mise à jour du profil', error);
+      logger.error('Registration error', error);
       throw error;
     }
   }
-
+  
   /**
-   * Changement du mot de passe
+   * Request a password reset
+   */
+  async forgotPassword(email: string): Promise<boolean> {
+    try {
+      await authHttp.post('/forgot-password', { email }, { requiresAuth: false });
+      return true;
+    } catch (error) {
+      logger.error('Forgot password error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Reset password with token
+   */
+  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    try {
+      await authHttp.post('/reset-password', { token, password: newPassword }, { requiresAuth: false });
+      return true;
+    } catch (error) {
+      logger.error('Reset password error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Verify email address
+   */
+  async verifyEmail(token: string): Promise<boolean> {
+    try {
+      await authHttp.post('/verify-email', { token }, { requiresAuth: false });
+      return true;
+    } catch (error) {
+      logger.error('Email verification error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get current user information
+   */
+  async getCurrentUser(): Promise<User> {
+    try {
+      return await authHttp.get<User>('/me');
+    } catch (error) {
+      logger.error('Get current user error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update user profile
+   */
+  async updateProfile(userData: Partial<User>): Promise<User> {
+    try {
+      return await authHttp.put<User>('/me', userData);
+    } catch (error) {
+      logger.error('Update profile error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Change password
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<boolean> {
     try {
-      await ApiService.put(
-        `${AuthApiService.BASE_PATH}/change-password`,
-        { currentPassword, newPassword }
-      );
+      await authHttp.post('/change-password', { currentPassword, newPassword });
       return true;
     } catch (error) {
-      logger.error('Erreur lors du changement de mot de passe', error);
+      logger.error('Change password error', error);
       throw error;
     }
   }
-
+  
   /**
-   * Vérification de l'adresse e-mail
+   * Logout
    */
-  async verifyEmail(verificationToken: string): Promise<boolean> {
+  async logout(): Promise<void> {
     try {
-      await ApiService.post(
-        `${AuthApiService.BASE_PATH}/verify-email`,
-        { token: verificationToken },
-        false
-      );
-      
-      // Mettre à jour le statut de vérification de l'utilisateur
-      const currentUserJson = await AsyncStorage.getItem('current_user');
-      if (currentUserJson) {
-        const currentUser = JSON.parse(currentUserJson);
-        const updatedUser = { ...currentUser, emailVerified: true };
-        await AsyncStorage.setItem('current_user', JSON.stringify(updatedUser));
+      // Try to invalidate the token on the backend
+      try {
+        await authHttp.post('/logout', {});
+      } catch (error) {
+        // Continue with local logout if server-side logout fails
+        logger.warn('Server-side logout failed', error);
       }
       
+      // Clear local tokens
+      await clearTokens();
+    } catch (error) {
+      logger.error('Logout error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Refresh token
+   */
+  async refreshToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: number }> {
+    try {
+      const response = await authHttp.post<{ accessToken: string; expiresAt: number }>(
+        '/refresh-token',
+        { refreshToken },
+        { requiresAuth: false }
+      );
+      
+      // Store the new access token
+      await saveAccessToken(response.accessToken);
+      await saveTokenExpiry(response.expiresAt);
+      
+      return response;
+    } catch (error) {
+      logger.error('Token refresh error', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Verify 2FA code
+   */
+  async verifyTwoFactorCode(code: string): Promise<boolean> {
+    try {
+      await authHttp.post('/verify-2fa', { code });
       return true;
     } catch (error) {
-      logger.error('Erreur lors de la vérification de l\'e-mail', error);
+      logger.error('2FA verification error', error);
       throw error;
     }
   }

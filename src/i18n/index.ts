@@ -3,6 +3,8 @@ import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
 import { I18nManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// Add direct import instead of dynamic import
+import UserService from '../services/UserService';
 
 // Import des fichiers de traduction
 import fr from './locales/fr.json';
@@ -70,6 +72,22 @@ export const changeLanguage = async (language: string) => {
   try {
     await AsyncStorage.setItem('user-language', language);
     await i18n.changeLanguage(language);
+    
+    // Update user profile language preference if user is authenticated
+    // Wrap in try-catch to prevent crashes if authentication is not ready
+    try {
+      // Using the directly imported UserService instead of dynamic import
+      if (UserService && typeof UserService.getCurrentUser === 'function') {
+        const currentUser = await UserService.getCurrentUser();
+        if (currentUser) {
+          await UserService.updateUserProfile({ language });
+        }
+      }
+    } catch (error) {
+      // Just log the error but don't fail the language change
+      console.log('Could not update user profile language:', error);
+    }
+    
     return true;
   } catch (error) {
     console.log('Erreur lors du changement de langue:', error);

@@ -15,7 +15,8 @@
     "types": [],
     "skipDefaultLibCheck": true,
     "isolatedModules": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "module": "esnext"
   },
   "include": [
     "**/*.ts",

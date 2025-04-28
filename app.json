@@ -5,16 +5,30 @@
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
+    "scheme": "ksmall",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kiota.ksmall"
     },
     "android": {
+      "package": "com.kiota.ksmall",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow KSMall to access your secure credentials"
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }
