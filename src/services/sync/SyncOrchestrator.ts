@@ -17,6 +17,7 @@ import { default as dashboardSyncService } from './DashboardSyncService';
 import offlineQueueService from '../OfflineQueueService';
 import { BaseSyncService } from './BaseSyncService';
 import { BusinessDomain, SyncPriority, SyncCheckpoint, AdvancedSyncOptions } from './SyncTypes';
+import backgroundTaskManager from '../../utils/backgroundTaskManager';
 
 /**
  * Interface pour les résultats de synchronisation par domaine métier
@@ -944,6 +945,178 @@ class SyncOrchestrator {
       return await service.synchronize(technical.forceFullSync || false, options);
     } catch (error) {
       logger.error('Erreur lors de la synchronisation du tableau de bord:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Version optimisée de la synchronisation qui utilise le gestionnaire de tâches en arrière-plan
+   * Cette méthode permet de démarrer la synchronisation sans bloquer l'interface utilisateur
+   * @param options Options de synchronisation
+   * @returns Une promesse qui se résout immédiatement, tandis que la synchronisation continue en arrière-plan
+   */
+  public startBackgroundSync(options: SyncOptions = {}): Promise<void> {
+    return new Promise((resolve) => {
+      // Ajouter la tâche de synchronisation au gestionnaire de tâches en arrière-plan
+      backgroundTaskManager.addTask({
+        id: 'global-sync-' + Date.now(),
+        execute: async () => {
+          await this.synchronizeAll(options);
+        },
+        priority: 3, // Priorité moyenne
+        onSuccess: () => {
+          logger.info('Synchronisation en arrière-plan terminée avec succès');
+        },
+        onError: (error) => {
+          logger.error('Erreur lors de la synchronisation en arrière-plan:', error);
+        }
+      });
+      
+      // Résoudre immédiatement pour ne pas bloquer l'interface utilisateur
+      resolve();
+    });
+  }
+  
+  /**
+   * Synchroniser un domaine spécifique en arrière-plan
+   * @param domain Domaine à synchroniser
+   * @param options Options de synchronisation
+   * @returns Une promesse qui se résout immédiatement
+   */
+  public startDomainBackgroundSync(domain: BusinessDomain, options: SyncOptions = {}): Promise<void> {
+    return new Promise((resolve) => {
+      // Calculer la priorité en fonction du domaine
+      let priority = 5; // Par défaut priorité moyenne
+      
+      switch (domain) {
+        case BusinessDomain.CORE:
+          priority = 1; // La plus haute priorité
+          break;
+        case BusinessDomain.COMMERCIAL:
+        case BusinessDomain.FINANCIAL:
+          priority = 2; // Haute priorité
+          break;
+        case BusinessDomain.INVENTORY:
+          priority = 3; // Priorité moyenne
+          break;
+        case BusinessDomain.ANALYTICS:
+          priority = 7; // Basse priorité
+          break;
+        case BusinessDomain.SETTINGS:
+          priority = 8; // Très basse priorité
+          break;
+      }
+      
+      // Ajouter la tâche de synchronisation au gestionnaire de tâches en arrière-plan
+      backgroundTaskManager.addTask({
+        id: `sync-${domain}-${Date.now()}`,
+        execute: async () => {
+          await this.synchronizeDomain(domain, options);
+        },
+        priority,
+        onSuccess: () => {
+          logger.info(`Synchronisation du domaine ${domain} terminée avec succès`);
+        },
+        onError: (error) => {
+          logger.error(`Erreur lors de la synchronisation du domaine ${domain}:`, error);
+        }
+      });
+      
+      // Résoudre immédiatement
+      resolve();
+    });
+  }
+  
+  /**
+   * Vérifier si des synchronisations sont en cours d'exécution en arrière-plan
+   */
+  public hasBackgroundSyncTasks(): boolean {
+    return backgroundTaskManager.getQueueLength() > 0;
+  }
+  
+  /**
+   * Méthode d'optimisation de la synchronisation initiale
+   * Utilise le gestionnaire de tâches en arrière-plan pour les opérations lourdes
+   */
+  public async optimizedInitialSync(): Promise<boolean> {
+    try {
+      // Vérifier la connexion réseau
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        logger.debug('Pas de connexion réseau, synchronisation optimisée ignorée');
+        return false;
+      }
+      
+      // Planifier les tâches de synchronisation avec des priorités différentes
+      // Les données critiques d'abord
+      backgroundTaskManager.addTask({
+        id: 'sync-critical-data',
+        execute: async () => {
+          // Synchroniser uniquement les données essentielles au démarrage
+          await this.synchronizeDomain(BusinessDomain.CORE, {
+            technical: { batchProcessing: true, batchSize: 20 }
+          });
+        },
+        priority: 1, // Priorité la plus haute (1-10)
+        onSuccess: () => {
+          logger.debug('Synchronisation des données critiques terminée');
+        },
+        onError: (error) => {
+          logger.error('Erreur lors de la synchronisation des données critiques:', error);
+        }
+      });
+      
+      // Ensuite, planifier les données commerciales importantes
+      backgroundTaskManager.addTask({
+        id: 'sync-commercial-data',
+        execute: async () => {
+          await this.synchronizeDomain(BusinessDomain.COMMERCIAL, {
+            technical: { batchProcessing: true, batchSize: 20 }
+          });
+        },
+        priority: 3,
+        onSuccess: () => {
+          logger.debug('Synchronisation des données commerciales terminée');
+        },
+        onError: (error) => {
+          logger.error('Erreur lors de la synchronisation des données commerciales:', error);
+        }
+      });
+      
+      // Planifier le reste des synchronisations avec une priorité plus basse
+      // pour qu'elles ne ralentissent pas l'interface utilisateur
+      const domainsToSync = [
+        BusinessDomain.FINANCIAL,
+        BusinessDomain.INVENTORY,
+        BusinessDomain.ANALYTICS,
+        BusinessDomain.SETTINGS
+      ].filter(domain => domain !== undefined); // Filtrer les domaines non définis
+      
+      domainsToSync.forEach((domain, index) => {
+        if (domain) { // Vérifier que le domaine est bien défini
+          const domainString = String(domain).toLowerCase(); // Convertir en string de manière sécurisée
+          
+          backgroundTaskManager.addTask({
+            id: `sync-${domainString}-data`,
+            execute: async () => {
+              await this.synchronizeDomain(domain, {
+                technical: { batchProcessing: true, batchSize: 20 }
+              });
+            },
+            priority: 5 + index, // Priorités plus basses (5-9)
+            onSuccess: () => {
+              logger.debug(`Synchronisation des données ${domainString} terminée`);
+            },
+            onError: (error) => {
+              logger.error(`Erreur lors de la synchronisation des données ${domainString}:`, error);
+            }
+          });
+        }
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Erreur lors de la synchronisation optimisée:', error);
       return false;
     }
   }

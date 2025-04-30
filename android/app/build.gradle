@@ -130,6 +130,9 @@ dependencies {
     
     // Configuration pour le mode démo sur Android
     implementation "androidx.sqlite:sqlite:2.3.1"
+    
+    // Support pour react-native-vector-icons
+    implementation project(':react-native-vector-icons')
 }
 
 // Script post-build pour vérifier si le bundle contient des références à axios

@@ -314,6 +314,125 @@ class DatabaseService {
       throw error;
     }
   }
+
+  /**
+   * Initialiser la base de données de manière optimisée (chargement paresseux)
+   * Cette méthode est conçue pour accélérer le démarrage de l'application
+   */
+  static async initializeLazy(): Promise<void> {
+    try {
+      // Simplement ouvrir la connexion à la base de données sans exécuter toutes les migrations
+      const db = await this.getDatabase();
+      
+      // Vérifier uniquement les tables essentielles au démarrage
+      await this.createTableIfNotExists(
+        db,
+        'company_profile',
+        `id INTEGER PRIMARY KEY,
+        name TEXT,
+        legal_form TEXT,
+        registration_number TEXT,
+        tax_id TEXT,
+        user_id TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+      );
+      
+      // Différer les migrations complètes pour plus tard
+      setTimeout(() => {
+        this.runMigrationsInBackground().catch(err => 
+          logger.error('Erreur dans les migrations en arrière-plan:', err)
+        );
+      }, 5000); // Exécuter après 5 secondes pour permettre à l'application de démarrer
+      
+      logger.info('Base de données initialisée en mode optimisé');
+    } catch (error) {
+      logger.error('Erreur lors de l\'initialisation optimisée de la base de données:', error);
+      // Ne pas faire échouer le démarrage, continuer quand même
+    }
+  }
+  
+  /**
+   * Exécuter les migrations en arrière-plan
+   */
+  private static async runMigrationsInBackground(): Promise<void> {
+    try {
+      // Vérifier si l'application est en premier plan avant d'exécuter les migrations lourdes
+      const db = await this.getDatabase();
+      
+      // Exécuter les migrations non critiques
+      await this.createTableIfNotExists(
+        db,
+        'user_profile',
+        `id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        display_name TEXT,
+        email TEXT,
+        phone_number TEXT,
+        photo_url TEXT,
+        language TEXT,
+        theme TEXT,
+        preferences TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+      );
+      
+      await this.createTableIfNotExists(
+        db,
+        'subscription',
+        `id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        plan_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        payment_method TEXT,
+        payment_id TEXT,
+        price REAL,
+        currency TEXT,
+        auto_renew INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+      );
+      
+      // Exécuter les migrations additionnelles uniquement si nécessaire
+      const needsMigrations = await this.checkIfMigrationsNeeded();
+      if (needsMigrations) {
+        logger.debug('Exécution des migrations additionnelles en arrière-plan');
+        await this.runMigrations();
+      }
+      
+      logger.info('Migrations en arrière-plan terminées avec succès');
+    } catch (error) {
+      logger.error('Erreur lors des migrations en arrière-plan:', error);
+      // L'erreur est déjà enregistrée, ne pas la propager
+    }
+  }
+  
+  /**
+   * Vérifier si des migrations sont nécessaires
+   */
+  private static async checkIfMigrationsNeeded(): Promise<boolean> {
+    try {
+      const db = await this.getDatabase();
+      // Vérifier si la version de la base de données nécessite une migration
+      const [versionResult] = await this.executeQuery(
+        db,
+        "PRAGMA user_version",
+        []
+      );
+      
+      if (versionResult?.rows?.length > 0) {
+        const currentVersion = versionResult.rows.item(0).user_version;
+        // Si la version est inférieure à la version attendue, des migrations sont nécessaires
+        return currentVersion < 2; // Remplacer 2 par la version actuelle de votre schéma
+      }
+      
+      return true; // Par défaut, exécuter les migrations
+    } catch (error) {
+      logger.error('Erreur lors de la vérification des migrations:', error);
+      return false; // En cas d'erreur, ne pas exécuter les migrations
+    }
+  }
 }
 
 export default DatabaseService;

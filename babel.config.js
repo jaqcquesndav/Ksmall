@@ -13,22 +13,24 @@ module.exports = function(api) {
       ["module:react-native-dotenv", {
         "moduleName": "@env",
         "path": ".env",
-        "blacklist": null,
-        "whitelist": null,
-        "safe": false,
+        "safe": true,
         "allowUndefined": true
-      }]
+      }],
+      // Ajout de plugins pour résoudre les problèmes de dépendances circulaires
+      "@babel/plugin-transform-flow-strip-types",
+      "@babel/plugin-proposal-class-properties",
+      "@babel/plugin-proposal-optional-chaining",
+      "@babel/plugin-proposal-nullish-coalescing-operator"
     ],
     // Options pour préserver les commentaires et améliorer la gestion des erreurs
     compact: false,
     comments: true,
     retainLines: true,
     sourceType: 'unambiguous',
-    // Nouvelles options pour améliorer la gestion des caractères spéciaux
+    // Options pour améliorer la stabilité du bundling
     minified: false,
-    inputSourceMap: true,
     sourceMaps: true,
-    // Options spécifiques pour les fichiers problématiques
+    // Configuration pour les fichiers problématiques
     overrides: [
       {
         test: /\.ts$/,
@@ -39,6 +41,11 @@ module.exports = function(api) {
             onlyRemoveTypeImports: true
           }]
         ]
+      },
+      // Gérer spécifiquement les modules problématiques
+      {
+        test: /node_modules[\/\\](react-native|@react-native-community|@react-navigation|react-native-reanimated)/,
+        sourceType: 'unambiguous'
       }
     ]
   };
