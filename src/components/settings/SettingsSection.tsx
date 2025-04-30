@@ -1,11 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-
-interface SettingsSectionProps {
-  title: string;
-  theme: any;
-  children: React.ReactNode;
-}
+import { SettingsSectionProps } from '../../types/settings';
 
 /**
  * Reusable settings section component with title and content grouping

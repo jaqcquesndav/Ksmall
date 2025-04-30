@@ -3,11 +3,12 @@ import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '../../../utils/logger';
+import { API_URL as API_BASE_URL, APP_ENV } from '@env';
 
 // API configuration
 export const API_CONFIG = {
   // Base URL pour l'API backend
-  BASE_URL: process.env.API_BASE_URL || 'https://api.ksmall.example.com/v1',
+  BASE_URL: API_BASE_URL || 'https://api.ksmall.example.com/v1',
   
   // Timeout par défaut pour les requêtes (en ms)
   TIMEOUT: 30000,

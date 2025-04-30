@@ -1,12 +1,54 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { firebase } from '../config/firebase';
 import DashboardAccountingService from '../services/DashboardAccountingService';
 import { setDemoMode } from '../services/auth/AuthStorage';
 import Auth0Service from '../services/auth/Auth0Service';
-import { getUserInfo, hasValidTokens, clearTokens, setOfflineMode as setTokenOfflineMode } from '../services/auth/TokenStorage';
+import { 
+  getUserInfo, 
+  hasValidTokens, 
+  clearTokens, 
+  setOfflineMode as setTokenOfflineMode 
+} from '../services/auth/TokenStorage';
 import { authApi } from '../services/api/ApiClient';
 import { useNetInfo } from '@react-native-community/netinfo';
+import logger from '../utils/logger';
+import { AxiosResponse } from 'axios';
+
+// Interface pour les réponses API
+interface ApiResponse {
+  [key: string]: any;
+}
+
+// Interface pour les données utilisateur de l'API
+interface ApiUserProfile {
+  sub?: string;
+  id?: string;
+  email?: string;
+  name?: string;
+  displayName?: string;
+  picture?: string;
+  photoURL?: string;
+  phone_number?: string;
+  phoneNumber?: string;
+  email_verified?: boolean;
+  emailVerified?: boolean;
+  company?: string;
+  role?: string;
+  position?: string;
+  language?: string;
+  locale?: string;
+  [key: string]: any;
+}
+
+// Interface pour les réponses d'authentification
+interface AuthResponse extends ApiResponse {
+  access_token?: string;
+  refresh_token?: string;
+  id_token?: string;
+  expires_in?: number;
+  user?: ApiUserProfile;
+  [key: string]: any;
+}
 
 interface User {
   uid: string;
@@ -20,7 +62,7 @@ interface User {
   position?: string;
   language?: string;
   isDemo: boolean;
-  provider?: string; // Added for social login tracking
+  provider?: string; // Ajouté pour le suivi de la connexion sociale
   [key: string]: string | boolean | null | undefined;
 }
 
@@ -65,7 +107,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const netInfo = useNetInfo();
   
-  // Check connectivity and set offline mode
+  // Vérifier la connectivité et définir le mode hors ligne
   useEffect(() => {
     const updateOfflineStatus = async () => {
       await setTokenOfflineMode(netInfo.isConnected === false);
@@ -75,21 +117,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [netInfo.isConnected]);
 
   useEffect(() => {
-    console.log("🔐 Auth state changed:", user ? `User logged in: ${user.email}` : "No user logged in");
+    logger.info("🔐 Auth state changed:", user ? `User logged in: ${user.email}` : "No user logged in");
   }, [user]);
 
   useEffect(() => {
     const checkExistingAuth = async () => {
       try {
-        console.log("🔄 Checking existing auth session...");
-        // Check for existing valid token
+        logger.info("🔄 Checking existing auth session...");
+        // Vérifier si un token valide existe
         const isAuthenticated = await hasValidTokens();
         
         if (isAuthenticated) {
-          // Get user info from secure storage
+          // Récupérer les informations utilisateur depuis le stockage sécurisé
           const userInfo = await getUserInfo();
           if (userInfo) {
-            // Create a user object that matches our application's user model
+            // Créer un objet utilisateur correspondant au modèle de notre application
             setUser({
               uid: userInfo.sub,
               email: userInfo.email,
@@ -103,21 +145,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               language: userInfo.locale || 'fr',
               isDemo: false
             });
-            console.log("✅ Restored authentication session");
+            logger.info("✅ Restored authentication session");
           }
         } else {
-          // Check if there are saved credentials for offline mode
+          // Vérifier s'il y a des identifiants sauvegardés pour le mode hors ligne
           try {
             const savedCredentialsJson = await AsyncStorage.getItem('saved_credentials');
+            
             if (savedCredentialsJson && netInfo.isConnected === false) {
               const savedCredentials = JSON.parse(savedCredentialsJson);
-              console.log("📱 Offline mode detected with saved credentials");
+              logger.info("📱 Offline mode detected with saved credentials");
               
-              // If it's the demo account, use demo mode
+              // Si c'est le compte de démonstration, utiliser le mode démo
               if (savedCredentials.email === 'jacquesndav@gmail.com' && savedCredentials.password === 'root12345') {
                 await demoLogin();
               } else {
-                // Create a basic user object for offline mode
+                // Créer un objet utilisateur de base pour le mode hors ligne
                 setUser({
                   uid: `offline-${Date.now()}`,
                   email: savedCredentials.email,
@@ -130,13 +173,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               }
             }
           } catch (offlineError) {
-            console.error('❌ Error checking offline credentials:', offlineError);
+            logger.error('❌ Error checking offline credentials:', offlineError);
           }
         }
       } catch (error) {
-        console.error('❌ Auth check failed:', error);
+        logger.error('❌ Auth check failed:', error);
       } finally {
-        console.log("✅ Auth initialization complete, loading:", loading);
+        logger.info("✅ Auth initialization complete, loading:", loading);
         setLoading(false);
       }
     };
@@ -145,15 +188,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    console.log("🔑 Login process started");
+    logger.info("🔑 Login process started");
     setLoading(true);
     try {
-      // Handle demo account separately
+      // Gérer le compte de démonstration séparément
       if (email.trim() === 'jacquesndav@gmail.com' && password === 'root12345') {
         return demoLogin();
       }
       
-      // If offline, check saved credentials
+      // Si hors ligne, vérifier les identifiants sauvegardés
       if (netInfo.isConnected === false) {
         const savedCredentialsJson = await AsyncStorage.getItem('saved_credentials');
         if (savedCredentialsJson) {
@@ -168,7 +211,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               photoURL: null,
               emailVerified: false
             });
-            console.log("✅ Offline login successful with saved credentials");
+            logger.info("✅ Offline login successful with saved credentials");
             return;
           } else {
             throw new Error('Invalid credentials for offline mode');
@@ -178,67 +221,78 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
       
-      // Online mode - authenticate with NestJS Auth microservice
+      // Mode en ligne - authentification avec Auth0
       try {
-        // Try direct API login first (our own UI)
-        const loginResponse = await authApi.post('/login', { email, password }, { requiresAuth: false });
+        // Se connecter avec Auth0
+        const auth0User = await Auth0Service.login(email, password);
         
-        if (loginResponse && loginResponse.access_token) {
-          // Login successful with direct API
+        if (auth0User) {
+          // Définir l'état utilisateur
+          setUser(auth0User);
           
-          // Store tokens securely
-          // (This would be done in the ApiService implementation)
-          
-          // Get user profile from the token or user info endpoint
-          const userProfile = await authApi.get('/profile');
-          
-          // Set user state
-          setUser({
-            uid: userProfile.sub || userProfile.id,
-            email: userProfile.email,
-            displayName: userProfile.name || email.split('@')[0],
-            photoURL: userProfile.picture,
-            phoneNumber: userProfile.phone_number,
-            emailVerified: userProfile.email_verified,
-            company: userProfile.company,
-            role: userProfile.role,
-            isDemo: false
-          });
-          
-          // Save credentials for offline use
+          // Enregistrer les identifiants pour une utilisation hors ligne
           await AsyncStorage.setItem('saved_credentials', JSON.stringify({
             email: email,
             password: password
           }));
           
-          console.log("✅ API login successful");
-        }
-      } catch (apiError) {
-        console.log('API login failed, trying Auth0 fallback:', apiError);
-        
-        // If API login fails, fall back to Auth0
-        const user = await Auth0Service.login();
-        
-        if (user) {
-          setUser(user);
-          
-          // Save credentials for offline use
-          await AsyncStorage.setItem('saved_credentials', JSON.stringify({
-            email: email,
-            password: password
-          }));
-          
-          // Ensure demo mode is off
+          // S'assurer que le mode démo est désactivé
           await setDemoMode(false);
           DashboardAccountingService.setDemoMode(false);
           
-          console.log("✅ Auth0 login successful");
+          logger.info("✅ Auth0 login successful");
         } else {
           throw new Error('Login failed');
         }
+      } catch (auth0Error: any) {
+        logger.error('❌ Auth0 login failed:', auth0Error);
+        
+        // Essayer de se connecter via l'API si Auth0 échoue
+        try {
+          const response = await authApi.post<AuthResponse>('/login', { email, password }, { 
+            // On utilise as any pour contourner le problème de typage
+            requiresAuth: false 
+          } as any);
+          
+          const loginResponse = response as AuthResponse;
+          
+          if (loginResponse && loginResponse.access_token) {
+            // Succès de la connexion avec l'API directe
+            
+            // Récupérer le profil utilisateur
+            const response = await authApi.get<ApiUserProfile>('/profile');
+            const userProfile = response as ApiUserProfile;
+            
+            // Définir l'état utilisateur
+            setUser({
+              uid: userProfile.sub || userProfile.id || '',
+              email: userProfile.email || '',
+              displayName: userProfile.name || userProfile.displayName || email.split('@')[0],
+              photoURL: userProfile.picture || userProfile.photoURL || null,
+              phoneNumber: userProfile.phone_number || userProfile.phoneNumber || null,
+              emailVerified: userProfile.email_verified || userProfile.emailVerified || false,
+              company: userProfile.company,
+              role: userProfile.role,
+              isDemo: false
+            });
+            
+            // Enregistrer les identifiants pour une utilisation hors ligne
+            await AsyncStorage.setItem('saved_credentials', JSON.stringify({
+              email: email,
+              password: password
+            }));
+            
+            logger.info("✅ API login successful");
+          } else {
+            throw new Error('API login failed');
+          }
+        } catch (apiError) {
+          logger.error('API login failed:', apiError);
+          throw auth0Error; // Renvoyer l'erreur originale de Auth0
+        }
       }
     } catch (error: any) {
-      console.error('❌ Login failed:', error);
+      logger.error('❌ Login failed:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -248,63 +302,80 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (email: string, password: string, displayName: string) => {
     setLoading(true);
     try {
-      // Check connectivity
+      // Vérifier la connectivité
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required for registration');
       }
       
-      // Try to register with API first
+      // Essayer de s'enregistrer avec Auth0
       try {
-        const registerResponse = await authApi.post('/register', {
-          email,
-          password,
-          displayName,
-        }, { requiresAuth: false });
+        const auth0User = await Auth0Service.register(email, password, displayName);
         
-        if (registerResponse && registerResponse.user) {
-          // Set user state from API response
-          setUser({
-            uid: registerResponse.user.id || registerResponse.user.sub,
-            email: registerResponse.user.email,
-            displayName: registerResponse.user.displayName || displayName,
-            photoURL: registerResponse.user.photoURL || null,
-            phoneNumber: registerResponse.user.phoneNumber || null,
-            emailVerified: registerResponse.user.emailVerified || false,
-            isDemo: false
-          });
+        if (auth0User) {
+          // Définir l'état utilisateur
+          setUser(auth0User);
           
-          // Save credentials for offline use
+          // Enregistrer les identifiants pour une utilisation hors ligne
           await AsyncStorage.setItem('saved_credentials', JSON.stringify({
             email: email,
             password: password
           }));
           
-          console.log("✅ API registration successful");
-        } else {
-          throw new Error('API registration failed');
-        }
-      } catch (apiError) {
-        console.log('API registration failed, trying Auth0 fallback:', apiError);
-        
-        // Fall back to Auth0 registration
-        const user = await Auth0Service.registerDirectly(email, password, displayName);
-        
-        if (user) {
-          setUser(user);
+          // S'assurer que le mode démo est désactivé
+          await setDemoMode(false);
+          DashboardAccountingService.setDemoMode(false);
           
-          // Save credentials for offline use
-          await AsyncStorage.setItem('saved_credentials', JSON.stringify({
-            email: email,
-            password: password
-          }));
-          
-          console.log("✅ Auth0 registration successful");
+          logger.info("✅ Auth0 registration successful");
         } else {
           throw new Error('Registration failed');
         }
+      } catch (auth0Error) {
+        logger.error('Auth0 registration failed, trying API fallback:', auth0Error);
+        
+        // Si l'enregistrement Auth0 échoue, essayer l'API
+        try {
+          const response = await authApi.post<AuthResponse>('/register', {
+            email,
+            password,
+            displayName,
+          }, { 
+            // On utilise as any pour contourner le problème de typage
+            requiresAuth: false 
+          } as any);
+          
+          const registerResponse = response as AuthResponse;
+          
+          if (registerResponse && registerResponse.user) {
+            const userData = registerResponse.user;
+            
+            // Définir l'état utilisateur à partir de la réponse de l'API
+            setUser({
+              uid: userData.id || userData.sub || '',
+              email: userData.email || '',
+              displayName: userData.displayName || userData.name || displayName,
+              photoURL: userData.photoURL || userData.picture || null,
+              phoneNumber: userData.phoneNumber || userData.phone_number || null,
+              emailVerified: userData.emailVerified || userData.email_verified || false,
+              isDemo: false
+            });
+            
+            // Enregistrer les identifiants pour une utilisation hors ligne
+            await AsyncStorage.setItem('saved_credentials', JSON.stringify({
+              email: email,
+              password: password
+            }));
+            
+            logger.info("✅ API registration successful");
+          } else {
+            throw new Error('API registration failed');
+          }
+        } catch (apiError) {
+          logger.error('API registration also failed:', apiError);
+          throw auth0Error; // Renvoyer l'erreur originale de Auth0
+        }
       }
     } catch (error) {
-      console.error('Sign up error:', error);
+      logger.error('Sign up error:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -314,9 +385,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     setLoading(true);
     try {
-      console.log('Logout attempt');
+      logger.info('Logout attempt');
       
-      // If we're in demo mode, just clear state
+      // Si nous sommes en mode démo, effacer simplement l'état
       if (user?.isDemo) {
         await AsyncStorage.clear();
         await clearTokens();
@@ -326,24 +397,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
       
-      // If we're online, try to logout from Auth0
+      // Si nous sommes en ligne, essayer de se déconnecter d'Auth0
       if (netInfo.isConnected !== false) {
         try {
-          // Try both API and Auth0 logout
-          await authApi.post('/logout', {}).catch(() => console.log('API logout unavailable'));
+          // Essayer de se déconnecter via Auth0
           await Auth0Service.logout();
         } catch (error) {
-          console.log('Online logout had errors:', error);
-          // Continue with local logout even if online logout fails
+          logger.error('Online logout had errors:', error);
+          // Continuer avec la déconnexion locale même si la déconnexion en ligne échoue
         }
       }
       
-      // Always clear local storage and state
+      // Toujours effacer le stockage local et l'état
       await AsyncStorage.clear();
       await clearTokens();
       setUser(null);
     } catch (error: any) {
-      console.error('Logout failed:', error.message);
+      logger.error('Logout failed:', error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -353,25 +423,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const resetPassword = async (email: string) => {
     setLoading(true);
     try {
-      // Check connectivity
+      // Vérifier la connectivité
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required to reset password');
       }
       
-      // Try both API and Auth0 for password reset
+      // Essayer à la fois l'API et Auth0 pour la réinitialisation du mot de passe
       try {
-        await authApi.post('/forgot-password', { email }, { requiresAuth: false });
-        console.log('Password reset email sent via API');
-      } catch (apiError) {
-        // Fall back to Auth0 password reset
         const success = await Auth0Service.forgotPassword(email);
         if (!success) {
+          throw new Error('Failed to send password reset email via Auth0');
+        }
+        logger.info('Password reset email sent via Auth0');
+      } catch (auth0Error) {
+        // Replier sur la réinitialisation du mot de passe de l'API
+        try {
+          await authApi.post<ApiResponse>('/forgot-password', { email }, { 
+            // On utilise as any pour contourner le problème de typage
+            requiresAuth: false 
+          } as any);
+          logger.info('Password reset email sent via API');
+        } catch (apiError) {
+          logger.error('All password reset methods failed:', apiError);
           throw new Error('Failed to send password reset email');
         }
-        console.log('Password reset email sent via Auth0');
       }
     } catch (error: any) {
-      console.error('Password reset failed:', error.message);
+      logger.error('Password reset failed:', error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -382,26 +460,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setLoading(true);
       
-      // If we're online, update profile through API
+      // Si nous sommes en ligne, mettre à jour le profil via l'API
       if (netInfo.isConnected !== false && !user?.isDemo) {
         try {
-          const updatedProfile = await authApi.patch('/profile', data);
+          const response = await authApi.patch<ApiUserProfile>('/profile', data);
+          const updatedProfile = response as ApiUserProfile;
           
-          // Update local user state with API response
-          setUser(prev => prev ? { ...prev, ...updatedProfile } : null);
-          console.log('Profile updated via API');
+          // Mettre à jour l'état utilisateur local avec la réponse de l'API
+          if (user && updatedProfile) {
+            // Créer un nouvel objet utilisateur avec les données mises à jour
+            const updatedUser: User = {
+              ...user,
+              ...(updatedProfile as any),
+              // S'assurer que les champs spécifiques sont correctement mappés
+              displayName: updatedProfile.name || updatedProfile.displayName || user.displayName,
+              photoURL: updatedProfile.picture || updatedProfile.photoURL || user.photoURL,
+              phoneNumber: updatedProfile.phone_number || updatedProfile.phoneNumber || user.phoneNumber,
+              emailVerified: updatedProfile.email_verified || updatedProfile.emailVerified || user.emailVerified
+            };
+            setUser(updatedUser);
+          }
+          logger.info('Profile updated via API');
         } catch (apiError) {
-          console.error('Failed to update profile via API:', apiError);
-          // Fall back to local update only
+          logger.error('Failed to update profile via API:', apiError);
+          // Replier sur la mise à jour locale uniquement
           setUser(prev => prev ? { ...prev, ...data } : null);
         }
       } else {
-        // Offline mode or demo mode - just update local state
-        console.log('Offline/demo profile update - local only');
+        // Mode hors ligne ou mode démo - mettre à jour uniquement l'état local
+        logger.info('Offline/demo profile update - local only');
         setUser(prev => prev ? { ...prev, ...data } : null);
       }
     } catch (error) {
-      console.error('Error updating profile:', error);
+      logger.error('Error updating profile:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -427,9 +518,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Activer le mode démo pour les transactions
       await setDemoMode(true);
       DashboardAccountingService.setDemoMode(true);
-      console.log("🎉 Demo account login complete");
+      logger.info("🎉 Demo account login complete");
     } catch (error: any) {
-      console.error('Demo login failed:', error.message);
+      logger.error('Demo login failed:', error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -438,56 +529,71 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyTwoFactorCode = async (code: string): Promise<void> => {
     try {
-      console.log(`Verifying 2FA code: ${code}`);
+      logger.info(`Verifying 2FA code: ${code}`);
       
-      // If we're online and not in demo mode
+      // Si nous sommes en ligne et pas en mode démo
       if (netInfo.isConnected !== false && !user?.isDemo) {
         try {
-          await authApi.post('/verify-2fa', { code });
-          console.log('2FA verification successful via API');
-        } catch (apiError) {
-          console.error('2FA API verification failed:', apiError);
-          throw new Error('Invalid verification code');
+          // Verifier via Auth0
+          // Note: nous avons besoin du mfaToken, qui devrait avoir été stocké après la tentative de connexion
+          const mfaToken = await AsyncStorage.getItem('mfa_token');
+          if (!mfaToken) {
+            throw new Error('No MFA token available');
+          }
+          
+          await Auth0Service.verifyTwoFactorCode(code, mfaToken);
+          logger.info('2FA verification successful via Auth0');
+        } catch (auth0Error) {
+          logger.error('Auth0 2FA verification failed:', auth0Error);
+          
+          // Essayer via l'API comme secours
+          try {
+            await authApi.post<ApiResponse>('/verify-2fa', { code });
+            logger.info('2FA verification successful via API');
+          } catch (apiError) {
+            logger.error('2FA API verification failed:', apiError);
+            throw new Error('Invalid verification code');
+          }
         }
       } else if (code !== '123456') {
-        // Demo/offline 2FA code
+        // Code 2FA mode démo/hors ligne
         throw new Error('Invalid verification code');
       }
     } catch (error) {
-      console.error('2FA verification failed:', error);
+      logger.error('2FA verification failed:', error);
       throw error;
     }
   };
 
   /**
-   * Login with Google
+   * Connexion avec Google
    */
   const loginWithGoogle = async (): Promise<void> => {
     setLoading(true);
     try {
-      // If offline, throw error as social login requires internet
+      // Si hors ligne, lancer une erreur car la connexion sociale nécessite Internet
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required for Google login');
       }
       
-      console.log("🔑 Google login process started");
+      logger.info("🔑 Google login process started");
       
-      // Try Auth0 Google login
+      // Essayer la connexion Google Auth0
       const googleUser = await Auth0Service.loginWithGoogle();
       
       if (googleUser) {
         setUser(googleUser);
         
-        // Ensure demo mode is off
+        // S'assurer que le mode démo est désactivé
         await setDemoMode(false);
         DashboardAccountingService.setDemoMode(false);
         
-        console.log("✅ Google login successful");
+        logger.info("✅ Google login successful");
       } else {
         throw new Error('Google login failed');
       }
     } catch (error: any) {
-      console.error('❌ Google login failed:', error);
+      logger.error('❌ Google login failed:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -495,34 +601,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
   
   /**
-   * Login with Facebook
+   * Connexion avec Facebook
    */
   const loginWithFacebook = async (): Promise<void> => {
     setLoading(true);
     try {
-      // If offline, throw error as social login requires internet
+      // Si hors ligne, lancer une erreur car la connexion sociale nécessite Internet
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required for Facebook login');
       }
       
-      console.log("🔑 Facebook login process started");
+      logger.info("🔑 Facebook login process started");
       
-      // Try Auth0 Facebook login
+      // Essayer la connexion Facebook Auth0
       const facebookUser = await Auth0Service.loginWithFacebook();
       
       if (facebookUser) {
         setUser(facebookUser);
         
-        // Ensure demo mode is off
+        // S'assurer que le mode démo est désactivé
         await setDemoMode(false);
         DashboardAccountingService.setDemoMode(false);
         
-        console.log("✅ Facebook login successful");
+        logger.info("✅ Facebook login successful");
       } else {
         throw new Error('Facebook login failed');
       }
     } catch (error: any) {
-      console.error('❌ Facebook login failed:', error);
+      logger.error('❌ Facebook login failed:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -530,34 +636,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
   
   /**
-   * Register with Google
+   * Inscription avec Google
    */
   const registerWithGoogle = async (): Promise<void> => {
     setLoading(true);
     try {
-      // If offline, throw error as social registration requires internet
+      // Si hors ligne, lancer une erreur car l'inscription sociale nécessite Internet
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required for Google registration');
       }
       
-      console.log("🔑 Google registration process started");
+      logger.info("🔑 Google registration process started");
       
-      // Try Auth0 Google registration
+      // Essayer l'inscription Google Auth0
       const googleUser = await Auth0Service.registerWithGoogle();
       
       if (googleUser) {
         setUser(googleUser);
         
-        // Ensure demo mode is off
+        // S'assurer que le mode démo est désactivé
         await setDemoMode(false);
         DashboardAccountingService.setDemoMode(false);
         
-        console.log("✅ Google registration successful");
+        logger.info("✅ Google registration successful");
       } else {
         throw new Error('Google registration failed');
       }
     } catch (error: any) {
-      console.error('❌ Google registration failed:', error);
+      logger.error('❌ Google registration failed:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -565,34 +671,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
   
   /**
-   * Register with Facebook
+   * Inscription avec Facebook
    */
   const registerWithFacebook = async (): Promise<void> => {
     setLoading(true);
     try {
-      // If offline, throw error as social registration requires internet
+      // Si hors ligne, lancer une erreur car l'inscription sociale nécessite Internet
       if (netInfo.isConnected === false) {
         throw new Error('Internet connection required for Facebook registration');
       }
       
-      console.log("🔑 Facebook registration process started");
+      logger.info("🔑 Facebook registration process started");
       
-      // Try Auth0 Facebook registration
+      // Essayer l'inscription Facebook Auth0
       const facebookUser = await Auth0Service.registerWithFacebook();
       
       if (facebookUser) {
         setUser(facebookUser);
         
-        // Ensure demo mode is off
+        // S'assurer que le mode démo est désactivé
         await setDemoMode(false);
         DashboardAccountingService.setDemoMode(false);
         
-        console.log("✅ Facebook registration successful");
+        logger.info("✅ Facebook registration successful");
       } else {
         throw new Error('Facebook registration failed');
       }
     } catch (error: any) {
-      console.error('❌ Facebook registration failed:', error);
+      logger.error('❌ Facebook registration failed:', error);
       throw error;
     } finally {
       setLoading(false);

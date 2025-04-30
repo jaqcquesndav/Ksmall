@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { SQLResultSet } from 'expo-sqlite';
+// Remove direct import of SQLResultSet and use SQLite.SQLResultSet instead
 import logger from '../utils/logger';
 
 /**
@@ -45,7 +45,7 @@ class DatabaseService {
     db: SQLite.WebSQLDatabase,
     query: string,
     params: any[] = []
-  ): Promise<[SQLResultSet, boolean]> {
+  ): Promise<[SQLite.SQLResultSet, boolean]> {
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -60,6 +60,22 @@ class DatabaseService {
         );
       });
     });
+  }
+
+  /**
+   * Convertit un SQLResultSet en tableau d'objets
+   * @param resultSet Résultat de la requête SQLite
+   * @returns Tableau d'objets typés
+   */
+  static mapResultSetToArray<T>(resultSet: SQLite.SQLResultSet): T[] {
+    const { rows } = resultSet;
+    const result: T[] = [];
+    
+    for (let i = 0; i < rows.length; i++) {
+      result.push(rows.item(i) as T);
+    }
+    
+    return result;
   }
 
   /**

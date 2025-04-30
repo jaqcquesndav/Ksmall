@@ -1,382 +1,432 @@
-import * as AuthSession from 'expo-auth-session';
-import * as Crypto from 'expo-crypto';
-import * as WebBrowser from 'expo-web-browser';
-import * as Random from 'expo-random';
-import { jwtDecode } from 'jwt-decode';
-import {
-  AUTH0_DOMAIN,
-  AUTH0_CLIENT_ID,
-  AUTH0_REDIRECT_URI,
-  AUTH0_AUDIENCE,
-  AUTH0_SCOPE,
-  AUTH_API_ENDPOINT
-} from '../../config/auth0';
-import {
-  saveAccessToken,
-  saveRefreshToken,
-  saveIdToken,
-  saveUserInfo,
-  saveTokenExpiry,
-  getAccessToken,
-  getRefreshToken,
-  clearTokens
-} from './TokenStorage';
+import Auth0, { Credentials } from 'react-native-auth0';
+import { auth0Config, AUTH0_SCOPE } from '../../config/auth0';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../../types/auth';
+import logger from '../../utils/logger';
+import { STORAGE_KEYS } from '../../config/constants';
 
-// Define available social login providers
-export enum SocialProvider {
-  GOOGLE = 'google-oauth2',
-  FACEBOOK = 'facebook',
+// Définir interface pour UserInfo car elle n'est pas exportée par react-native-auth0
+interface UserInfo {
+  sub?: string;
+  name?: string;
+  nickname?: string;
+  email?: string;
+  email_verified?: boolean;
+  picture?: string;
+  phone_number?: string;
+  locale?: string;
+  company?: string;
+  position?: string;
+  role?: string;
+  [key: string]: any;
 }
 
-// Register the AuthSession redirect URI for the Auth0 provider
-WebBrowser.maybeCompleteAuthSession();
+// Initialiser l'instance Auth0
+const auth0 = new Auth0({
+  domain: auth0Config.domain,
+  clientId: auth0Config.clientId
+});
 
 /**
- * Generate a cryptographically secure random string
+ * Clés de stockage pour AsyncStorage
  */
-const generateRandomString = async (): Promise<string> => {
-  const randomBytes = await Random.getRandomBytesAsync(32);
-  return Array.from(randomBytes)
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
+const KEYS = {
+  ACCESS_TOKEN: STORAGE_KEYS.AUTH_TOKEN,
+  REFRESH_TOKEN: STORAGE_KEYS.REFRESH_TOKEN,
+  USER_INFO: STORAGE_KEYS.USER_INFO,
+  ID_TOKEN: 'auth0_id_token',
+  EXPIRES_AT: 'auth0_expires_at',
+  OFFLINE_MODE: STORAGE_KEYS.OFFLINE_MODE
 };
 
 /**
- * Generate a code verifier (for PKCE)
- */
-const generateCodeVerifier = (): string => {
-  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-  let verifier = '';
-  for (let i = 0; i < 64; i++) {
-    verifier += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return verifier;
-};
-
-/**
- * Generate a code challenge from a verifier (for PKCE)
- */
-const generateCodeChallenge = async (verifier: string): Promise<string> => {
-  const digest = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    verifier
-  );
-  return btoa(digest)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-};
-
-/**
- * Auth0 authentication service
+ * Service d'authentification Auth0
  */
 class Auth0Service {
-  private authEndpoint: string;
-  private tokenEndpoint: string;
-  private userInfoEndpoint: string;
-
-  constructor() {
-    this.authEndpoint = `https://${AUTH0_DOMAIN}/authorize`;
-    this.tokenEndpoint = `https://${AUTH0_DOMAIN}/oauth/token`;
-    this.userInfoEndpoint = `https://${AUTH0_DOMAIN}/userinfo`;
-  }
-
   /**
-   * Login with Auth0
-   * @param useSignUpFlow - Whether to use the sign up flow
-   * @param socialProvider - Optional social provider to use for login
+   * Login avec email et mot de passe
    */
-  async login(useSignUpFlow = false, socialProvider?: SocialProvider): Promise<User | null> {
+  async login(email: string, password: string): Promise<User | null> {
     try {
-      // Generate the PKCE challenge verifier
-      const codeVerifier = generateCodeVerifier();
-      const codeChallenge = await generateCodeChallenge(codeVerifier);
-
-      // Create the AuthRequest
-      const request = new AuthSession.AuthRequest({
-        clientId: AUTH0_CLIENT_ID,
-        redirectUri: AUTH0_REDIRECT_URI,
-        responseType: AuthSession.ResponseType.Code,
-        codeChallenge,
-        codeChallengeMethod: AuthSession.CodeChallengeMethod.S256,
-        scopes: AUTH0_SCOPE.split(' '),
-        extraParams: {
-          audience: AUTH0_AUDIENCE
-        }
+      // Authentifier l'utilisateur avec Auth0
+      const credentials: Credentials = await auth0.auth.passwordRealm({
+        username: email,
+        password,
+        realm: 'Username-Password-Authentication',
+        scope: AUTH0_SCOPE,
+        audience: auth0Config.audience
       });
-
-      // If we're using signup flow, add screen_hint
-      if (useSignUpFlow) {
-        request.extraParams.screen_hint = 'signup';
-      }
-
-      // If a social provider is specified, add connection parameter
-      if (socialProvider) {
-        request.extraParams.connection = socialProvider;
-      }
-
-      // Start the auth flow and wait for a response
-      const result = await request.promptAsync({
-        authorizationEndpoint: this.authEndpoint
-      });
-
-      if (result.type === 'success') {
-        // Exchange the code for tokens
-        const { code } = result.params;
-        const exchangeResult = await this.exchangeCodeForTokens(code, codeVerifier);
-        
-        // Decode the ID token to get user information
-        const decodedIdToken = jwtDecode<any>(exchangeResult.id_token);
-        
-        // Get additional user info if needed
-        const userInfoResponse = await fetch(this.userInfoEndpoint, {
-          headers: {
-            Authorization: `Bearer ${exchangeResult.access_token}`
-          }
-        });
-        
-        const userInfo = await userInfoResponse.json();
-        
-        // Add provider info to user info
-        const provider = this.determineProvider(userInfo);
-
-        // Create user object that matches our application's user model
-        const user: User = {
-          uid: decodedIdToken.sub,
-          email: userInfo.email,
-          displayName: userInfo.name,
-          photoURL: userInfo.picture,
-          phoneNumber: userInfo.phone_number,
-          emailVerified: userInfo.email_verified,
-          isDemo: false,
-          provider: provider
-        };
-
-        // Save tokens and user info securely
-        await saveAccessToken(exchangeResult.access_token);
-        await saveRefreshToken(exchangeResult.refresh_token);
-        await saveIdToken(exchangeResult.id_token);
-        await saveUserInfo(userInfo);
-        
-        // Calculate token expiry time
-        const expiresAt = Date.now() + exchangeResult.expires_in * 1000;
-        await saveTokenExpiry(expiresAt);
-
-        return user;
-      }
       
-      return null;
+      if (!credentials || !credentials.accessToken) {
+        throw new Error('No credentials returned from Auth0');
+      }
+
+      // Récupérer les informations utilisateur
+      const userInfo = await this.getUserInfo(credentials.accessToken);
+      
+      // Sauvegarder les tokens
+      await this.saveCredentials(credentials);
+      
+      // Créer et retourner l'objet utilisateur
+      return this.createUserObject(userInfo, credentials);
     } catch (error) {
-      console.error('Auth0 login error:', error);
+      logger.error('Auth0 login error:', error);
       throw error;
     }
   }
 
   /**
-   * Login with Google
+   * Login avec Google
    */
   async loginWithGoogle(): Promise<User | null> {
-    return this.login(false, SocialProvider.GOOGLE);
-  }
-
-  /**
-   * Register with Google
-   */
-  async registerWithGoogle(): Promise<User | null> {
-    return this.login(true, SocialProvider.GOOGLE);
-  }
-
-  /**
-   * Login with Facebook
-   */
-  async loginWithFacebook(): Promise<User | null> {
-    return this.login(false, SocialProvider.FACEBOOK);
-  }
-
-  /**
-   * Register with Facebook
-   */
-  async registerWithFacebook(): Promise<User | null> {
-    return this.login(true, SocialProvider.FACEBOOK);
-  }
-  
-  /**
-   * Determine the provider from user info
-   */
-  private determineProvider(userInfo: any): string {
-    if (userInfo.sub) {
-      // Check if sub contains provider information
-      if (userInfo.sub.includes('google')) {
-        return 'google';
-      } else if (userInfo.sub.includes('facebook')) {
-        return 'facebook';
-      } else if (userInfo.sub.includes('auth0')) {
-        return 'auth0';
-      }
-    }
-    
-    // Check identity providers list if available
-    if (userInfo.identities && userInfo.identities.length > 0) {
-      return userInfo.identities[0].provider;
-    }
-    
-    return 'email'; // Default to email/password
-  }
-
-  /**
-   * Exchange auth code for tokens
-   */
-  private async exchangeCodeForTokens(code: string, codeVerifier: string): Promise<any> {
     try {
-      const tokenResponse = await fetch(this.tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          grant_type: 'authorization_code',
-          client_id: AUTH0_CLIENT_ID,
-          code_verifier: codeVerifier,
-          code,
-          redirect_uri: AUTH0_REDIRECT_URI
-        })
+      const credentials = await auth0.webAuth.authorize({
+        scope: AUTH0_SCOPE,
+        audience: auth0Config.audience,
+        connection: 'google-oauth2'
       });
-
-      if (!tokenResponse.ok) {
-        throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+      
+      if (!credentials || !credentials.accessToken) {
+        throw new Error('No credentials returned from Google Auth');
       }
 
-      return await tokenResponse.json();
+      // Récupérer les informations utilisateur
+      const userInfo = await this.getUserInfo(credentials.accessToken);
+      
+      // Sauvegarder les tokens
+      await this.saveCredentials(credentials);
+      
+      // Créer et retourner l'objet utilisateur
+      return this.createUserObject(userInfo, credentials);
     } catch (error) {
-      console.error('Error exchanging code for tokens:', error);
+      logger.error('Google login error:', error);
       throw error;
     }
   }
 
   /**
-   * Refresh access token
+   * Login avec Facebook
    */
-  async refreshToken(): Promise<string | null> {
+  async loginWithFacebook(): Promise<User | null> {
     try {
-      const refreshToken = await getRefreshToken();
-      if (!refreshToken) {
-        console.error('No refresh token available');
-        return null;
-      }
-
-      const response = await fetch(this.tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          grant_type: 'refresh_token',
-          client_id: AUTH0_CLIENT_ID,
-          refresh_token: refreshToken
-        })
+      const credentials = await auth0.webAuth.authorize({
+        scope: AUTH0_SCOPE,
+        audience: auth0Config.audience,
+        connection: 'facebook'
       });
-
-      if (!response.ok) {
-        throw new Error(`Refresh token failed: ${response.status}`);
+      
+      if (!credentials || !credentials.accessToken) {
+        throw new Error('No credentials returned from Facebook Auth');
       }
 
-      const data = await response.json();
+      // Récupérer les informations utilisateur
+      const userInfo = await this.getUserInfo(credentials.accessToken);
       
-      // Save the new access token
-      await saveAccessToken(data.access_token);
+      // Sauvegarder les tokens
+      await this.saveCredentials(credentials);
       
-      // Update the expiry time
-      const expiresAt = Date.now() + data.expires_in * 1000;
-      await saveTokenExpiry(expiresAt);
-
-      // If a new refresh token was provided, save it
-      if (data.refresh_token) {
-        await saveRefreshToken(data.refresh_token);
-      }
-
-      return data.access_token;
+      // Créer et retourner l'objet utilisateur
+      return this.createUserObject(userInfo, credentials);
     } catch (error) {
-      console.error('Error refreshing token:', error);
-      return null;
+      logger.error('Facebook login error:', error);
+      throw error;
     }
   }
 
   /**
-   * Logout from Auth0
+   * Inscription avec email et mot de passe
+   */
+  async register(email: string, password: string, name: string): Promise<User | null> {
+    try {
+      // Créer l'utilisateur dans Auth0
+      await auth0.auth.createUser({
+        email,
+        password,
+        connection: 'Username-Password-Authentication',
+        metadata: { name }
+      });
+      
+      // Se connecter avec les identifiants nouvellement créés
+      return this.login(email, password);
+    } catch (error) {
+      logger.error('Auth0 registration error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Inscription avec Google
+   */
+  async registerWithGoogle(): Promise<User | null> {
+    // Pour Auth0, l'inscription avec un fournisseur social est identique au login
+    return this.loginWithGoogle();
+  }
+
+  /**
+   * Inscription avec Facebook
+   */
+  async registerWithFacebook(): Promise<User | null> {
+    // Pour Auth0, l'inscription avec un fournisseur social est identique au login
+    return this.loginWithFacebook();
+  }
+
+  /**
+   * Déconnexion
    */
   async logout(): Promise<void> {
     try {
-      // Clear tokens from secure storage
-      await clearTokens();
-
-      // Optionally perform federated logout by opening a browser
-      // This is necessary for certain identity providers that use sessions
-      const returnTo = encodeURIComponent(AUTH0_REDIRECT_URI);
-      const logoutUrl = `https://${AUTH0_DOMAIN}/v2/logout?client_id=${AUTH0_CLIENT_ID}&returnTo=${returnTo}`;
+      // Récupérer le refresh token pour la déconnexion
+      const refreshToken = await AsyncStorage.getItem(KEYS.REFRESH_TOKEN);
       
-      await WebBrowser.openAuthSessionAsync(logoutUrl, 'ksmall://');
+      // Si disponible, utilisez-le pour la déconnexion complète
+      if (refreshToken) {
+        await auth0.webAuth.clearSession();
+      }
+      
+      // Nettoyage des tokens stockés localement
+      await this.clearTokens();
     } catch (error) {
-      console.error('Error during logout:', error);
+      logger.error('Auth0 logout error:', error);
+      
+      // Même en cas d'erreur, essayez de nettoyer les tokens locaux
+      await this.clearTokens();
       throw error;
     }
   }
 
   /**
-   * Send a forgot password email
+   * Mot de passe oublié
    */
   async forgotPassword(email: string): Promise<boolean> {
     try {
-      const response = await fetch(`https://${AUTH0_DOMAIN}/dbconnections/change_password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          client_id: AUTH0_CLIENT_ID,
-          email,
-          connection: 'Username-Password-Authentication' // Adjust this to your actual connection name
-        })
+      await auth0.auth.resetPassword({
+        email,
+        connection: 'Username-Password-Authentication'
       });
-
-      return response.ok;
+      return true;
     } catch (error) {
-      console.error('Error sending password reset email:', error);
+      logger.error('Forgot password error:', error);
       throw error;
     }
   }
 
   /**
-   * Register a new user with Auth0 directly (alternative to using screen_hint)
-   * This method can be used if your Auth0 customization needs specific registration handling
+   * Rafraîchir le token
    */
-  async registerDirectly(email: string, password: string, displayName: string): Promise<User | null> {
+  async refreshToken(): Promise<string | null> {
     try {
-      // Contact your Auth microservice endpoint to register the user
-      const response = await fetch(`${AUTH_API_ENDPOINT}/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          client_id: AUTH0_CLIENT_ID,
-          email,
-          password,
-          name: displayName,
-          connection: 'Username-Password-Authentication'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Registration failed: ${response.status}`);
+      const refreshToken = await AsyncStorage.getItem(KEYS.REFRESH_TOKEN);
+      
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
       }
-
-      // After successful registration, login automatically
-      return this.login(false);
+      
+      const newCredentials = await auth0.auth.refreshToken({
+        refreshToken
+      });
+      
+      // Sauvegarder les nouveaux tokens
+      await this.saveCredentials(newCredentials);
+      
+      return newCredentials.accessToken;
     } catch (error) {
-      console.error('Error during registration:', error);
+      logger.error('Token refresh error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Vérifier si l'utilisateur est authentifié
+   */
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      // Vérifier si un token d'accès existe et est valide
+      const accessToken = await AsyncStorage.getItem(KEYS.ACCESS_TOKEN);
+      
+      if (!accessToken) {
+        return false;
+      }
+      
+      // Vérifier l'expiration
+      const expiresAtStr = await AsyncStorage.getItem(KEYS.EXPIRES_AT);
+      const expiresAt = expiresAtStr ? parseInt(expiresAtStr, 10) : 0;
+      
+      // Si le token a expiré, tenter de le rafraîchir
+      if (Date.now() >= expiresAt - 60000) { // 1 minute de marge
+        try {
+          // Tenter de rafraîchir le token
+          const newAccessToken = await this.refreshToken();
+          return !!newAccessToken;
+        } catch (refreshError) {
+          logger.warn('Failed to refresh token:', refreshError);
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Check authentication status error:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Récupérer les informations utilisateur
+   */
+  async getUserInfo(accessToken: string): Promise<UserInfo> {
+    try {
+      const userInfo = await auth0.auth.userInfo({ token: accessToken });
+      return userInfo as UserInfo;
+    } catch (error) {
+      logger.error('Get user info error:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Récupérer les informations de l'utilisateur actuellement connecté
+   */
+  async getCurrentUser(): Promise<User | null> {
+    try {
+      const accessToken = await AsyncStorage.getItem(KEYS.ACCESS_TOKEN);
+      
+      if (!accessToken) {
+        return null;
+      }
+      
+      const userInfo = await this.getUserInfo(accessToken);
+      const userJson = await AsyncStorage.getItem(KEYS.USER_INFO);
+      const savedCredentials = userJson ? JSON.parse(userJson) : {};
+      
+      return this.createUserObject(userInfo, savedCredentials);
+    } catch (error) {
+      logger.error('Get current user error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Changer le mot de passe 
+   */
+  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    try {
+      // Vérifier l'authentification avec le mot de passe actuel
+      try {
+        await this.login(email, currentPassword);
+      } catch (loginError) {
+        logger.error('Current password verification failed:', loginError);
+        throw new Error('Current password is incorrect');
+      }
+
+      // Changer le mot de passe - utiliser resetPassword car changePassword n'existe pas
+      await auth0.auth.resetPassword({
+        email,
+        password: newPassword,
+        connection: 'Username-Password-Authentication'
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Change password error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Vérifier le code 2FA
+   */
+  async verifyTwoFactorCode(code: string, mfaToken: string): Promise<Credentials> {
+    try {
+      // Utiliser loginWithOTP au lieu de loginWithOtp (différence de casse)
+      const credentials = await auth0.auth.loginWithOTP({
+        otp: code,
+        mfaToken
+      });
+      
+      // Sauvegarder les tokens
+      await this.saveCredentials(credentials);
+      
+      return credentials;
+    } catch (error) {
+      logger.error('2FA verification error:', error);
+      throw error;
+    }
+  }
+
+  // ===== MÉTHODES PRIVÉES =====
+
+  /**
+   * Sauvegarder les informations d'identification
+   */
+  private async saveCredentials(credentials: Credentials): Promise<void> {
+    try {
+      if (credentials.accessToken) {
+        await AsyncStorage.setItem(KEYS.ACCESS_TOKEN, credentials.accessToken);
+      }
+      
+      if (credentials.refreshToken) {
+        await AsyncStorage.setItem(KEYS.REFRESH_TOKEN, credentials.refreshToken);
+      }
+      
+      if (credentials.idToken) {
+        await AsyncStorage.setItem(KEYS.ID_TOKEN, credentials.idToken);
+      }
+      
+      if (credentials.expiresIn) {
+        const expiresAt = Date.now() + credentials.expiresIn * 1000;
+        await AsyncStorage.setItem(KEYS.EXPIRES_AT, expiresAt.toString());
+      }
+    } catch (error) {
+      logger.error('Save credentials error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Effacer tous les tokens
+   */
+  private async clearTokens(): Promise<void> {
+    try {
+      await AsyncStorage.multiRemove([
+        KEYS.ACCESS_TOKEN,
+        KEYS.REFRESH_TOKEN,
+        KEYS.ID_TOKEN,
+        KEYS.USER_INFO,
+        KEYS.EXPIRES_AT
+      ]);
+    } catch (error) {
+      logger.error('Clear tokens error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Créer un objet utilisateur à partir des informations Auth0
+   */
+  private createUserObject(userInfo: UserInfo, credentials: any): User {
+    // Déterminer le fournisseur (Auth0, Google, Facebook, etc.)
+    let provider = 'auth0';
+    if (userInfo.sub) {
+      const parts = userInfo.sub.split('|');
+      if (parts.length > 1) {
+        provider = parts[0];
+      }
+    }
+
+    return {
+      uid: userInfo.sub || '',
+      email: userInfo.email || '',
+      displayName: userInfo.name || userInfo.nickname || userInfo.email?.split('@')[0] || '',
+      photoURL: userInfo.picture || null,
+      phoneNumber: userInfo.phone_number || null,
+      emailVerified: userInfo.email_verified || false,
+      company: userInfo.company,
+      role: userInfo['https://ksmall.app/roles'] || userInfo.role,
+      position: userInfo.position,
+      language: userInfo.locale || 'fr',
+      isDemo: false,
+      provider
+    };
   }
 }
 

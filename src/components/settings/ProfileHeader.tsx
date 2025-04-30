@@ -2,15 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-
-interface ProfileHeaderProps {
-  name: string;
-  businessName: string;
-  profileImage?: string | null;
-  theme: any;
-  onImageChange?: (uri: string) => void;
-  onEditProfilePress: () => void;
-}
+import { ProfileHeaderProps } from '../../types/settings';
 
 /**
  * Reusable profile header component for settings screen

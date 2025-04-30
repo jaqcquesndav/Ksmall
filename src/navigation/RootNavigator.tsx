@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import AppNavigator from './AppNavigator';
 import LoadingScreen from '../screens/common/LoadingScreen';
 import { RootStackParamList } from './types';
+import SyncStatusIndicator from '../components/common/SyncStatusIndicator';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -22,7 +23,12 @@ const RootNavigator: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  return <AppNavigator />;
+  return (
+    <>
+      <AppNavigator />
+      <SyncStatusIndicator />
+    </>
+  );
 };
 
 export default RootNavigator;

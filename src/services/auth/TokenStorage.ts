@@ -1,7 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-// Key names for various tokens and data
-const KEYS = {
+// Clés pour le stockage de tokens et autres données
+export const KEYS = {
   ACCESS_TOKEN: 'auth0_access_token',
   REFRESH_TOKEN: 'auth0_refresh_token',
   ID_TOKEN: 'auth0_id_token',
@@ -11,120 +12,123 @@ const KEYS = {
 };
 
 /**
- * Save access token securely
+ * Détermine si SecureStore est disponible sur l'appareil
+ * Sur certains appareils/émulateurs, SecureStore peut ne pas être disponible
+ */
+const isSecureStoreAvailable = async (): Promise<boolean> => {
+  try {
+    await SecureStore.getItemAsync('test');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Fonction d'enregistrement générique qui utilise SecureStore si disponible,
+ * sinon AsyncStorage
+ */
+const saveItem = async (key: string, value: string): Promise<void> => {
+  try {
+    if (await isSecureStoreAvailable()) {
+      await SecureStore.setItemAsync(key, value);
+    } else {
+      await AsyncStorage.setItem(key, value);
+    }
+  } catch (error) {
+    console.error(`Failed to save item ${key}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Fonction de récupération générique qui utilise SecureStore si disponible,
+ * sinon AsyncStorage
+ */
+const getItem = async (key: string): Promise<string | null> => {
+  try {
+    if (await isSecureStoreAvailable()) {
+      return await SecureStore.getItemAsync(key);
+    } else {
+      return await AsyncStorage.getItem(key);
+    }
+  } catch (error) {
+    console.error(`Failed to get item ${key}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Fonction de suppression générique pour un élément
+ */
+const removeItem = async (key: string): Promise<void> => {
+  try {
+    if (await isSecureStoreAvailable()) {
+      await SecureStore.deleteItemAsync(key);
+    } else {
+      await AsyncStorage.removeItem(key);
+    }
+  } catch (error) {
+    console.error(`Failed to remove item ${key}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Sauvegarder le token d'accès
  */
 export const saveAccessToken = async (token: string): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(KEYS.ACCESS_TOKEN, token);
-  } catch (error) {
-    console.error('Failed to save access token:', error);
-    throw error;
-  }
+  await saveItem(KEYS.ACCESS_TOKEN, token);
 };
 
 /**
- * Get access token
+ * Récupérer le token d'accès
  */
 export const getAccessToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(KEYS.ACCESS_TOKEN);
-  } catch (error) {
-    console.error('Failed to get access token:', error);
-    return null;
-  }
+  return await getItem(KEYS.ACCESS_TOKEN);
 };
 
 /**
- * Save refresh token securely
+ * Sauvegarder le refresh token
  */
 export const saveRefreshToken = async (token: string): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(KEYS.REFRESH_TOKEN, token);
-  } catch (error) {
-    console.error('Failed to save refresh token:', error);
-    throw error;
-  }
+  await saveItem(KEYS.REFRESH_TOKEN, token);
 };
 
 /**
- * Get refresh token
+ * Récupérer le refresh token
  */
 export const getRefreshToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(KEYS.REFRESH_TOKEN);
-  } catch (error) {
-    console.error('Failed to get refresh token:', error);
-    return null;
-  }
+  return await getItem(KEYS.REFRESH_TOKEN);
 };
 
 /**
- * Save ID token securely
+ * Sauvegarder le token ID
  */
 export const saveIdToken = async (token: string): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(KEYS.ID_TOKEN, token);
-  } catch (error) {
-    console.error('Failed to save ID token:', error);
-    throw error;
-  }
+  await saveItem(KEYS.ID_TOKEN, token);
 };
 
 /**
- * Get ID token
+ * Récupérer le token ID
  */
 export const getIdToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(KEYS.ID_TOKEN);
-  } catch (error) {
-    console.error('Failed to get ID token:', error);
-    return null;
-  }
+  return await getItem(KEYS.ID_TOKEN);
 };
 
 /**
- * Save token expiry time
- */
-export const saveTokenExpiry = async (expiresAt: number): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(KEYS.TOKEN_EXPIRY, expiresAt.toString());
-  } catch (error) {
-    console.error('Failed to save token expiry:', error);
-    throw error;
-  }
-};
-
-/**
- * Get token expiry time
- */
-export const getTokenExpiry = async (): Promise<number | null> => {
-  try {
-    const expiry = await SecureStore.getItemAsync(KEYS.TOKEN_EXPIRY);
-    return expiry ? parseInt(expiry, 10) : null;
-  } catch (error) {
-    console.error('Failed to get token expiry:', error);
-    return null;
-  }
-};
-
-/**
- * Save user info
+ * Sauvegarder les informations utilisateur
  */
 export const saveUserInfo = async (userInfo: any): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(KEYS.USER_INFO, JSON.stringify(userInfo));
-  } catch (error) {
-    console.error('Failed to save user info:', error);
-    throw error;
-  }
+  await saveItem(KEYS.USER_INFO, JSON.stringify(userInfo));
 };
 
 /**
- * Get user info
+ * Récupérer les informations utilisateur
  */
 export const getUserInfo = async (): Promise<any | null> => {
   try {
-    const userInfo = await SecureStore.getItemAsync(KEYS.USER_INFO);
+    const userInfo = await getItem(KEYS.USER_INFO);
     return userInfo ? JSON.parse(userInfo) : null;
   } catch (error) {
     console.error('Failed to get user info:', error);
@@ -133,23 +137,38 @@ export const getUserInfo = async (): Promise<any | null> => {
 };
 
 /**
- * Set offline mode
+ * Sauvegarder le moment d'expiration du token
  */
-export const setOfflineMode = async (enabled: boolean): Promise<void> => {
+export const saveTokenExpiry = async (expiryTime: number): Promise<void> => {
+  await saveItem(KEYS.TOKEN_EXPIRY, expiryTime.toString());
+};
+
+/**
+ * Récupérer le moment d'expiration du token
+ */
+export const getTokenExpiry = async (): Promise<number | null> => {
   try {
-    await SecureStore.setItemAsync(KEYS.OFFLINE_MODE, enabled ? 'true' : 'false');
+    const expiryString = await getItem(KEYS.TOKEN_EXPIRY);
+    return expiryString ? parseInt(expiryString, 10) : null;
   } catch (error) {
-    console.error('Failed to set offline mode:', error);
-    throw error;
+    console.error('Failed to get token expiry:', error);
+    return null;
   }
 };
 
 /**
- * Check if offline mode is enabled
+ * Définir le mode hors ligne
+ */
+export const setOfflineMode = async (enabled: boolean): Promise<void> => {
+  await saveItem(KEYS.OFFLINE_MODE, enabled ? 'true' : 'false');
+};
+
+/**
+ * Vérifier si le mode hors ligne est activé
  */
 export const isOfflineMode = async (): Promise<boolean> => {
   try {
-    const value = await SecureStore.getItemAsync(KEYS.OFFLINE_MODE);
+    const value = await getItem(KEYS.OFFLINE_MODE);
     return value === 'true';
   } catch (error) {
     console.error('Failed to get offline mode status:', error);
@@ -158,7 +177,7 @@ export const isOfflineMode = async (): Promise<boolean> => {
 };
 
 /**
- * Check if tokens are available (user is logged in)
+ * Vérifier si des tokens valides sont disponibles (utilisateur connecté)
  */
 export const hasValidTokens = async (): Promise<boolean> => {
   try {
@@ -168,7 +187,7 @@ export const hasValidTokens = async (): Promise<boolean> => {
     const expiryTime = await getTokenExpiry();
     if (!expiryTime) return false;
     
-    // Check if token is expired (with 60 seconds buffer)
+    // Vérifier si le token est expiré (avec 60 secondes de marge)
     const currentTime = Date.now();
     return currentTime < expiryTime - 60000;
   } catch (error) {
@@ -178,19 +197,12 @@ export const hasValidTokens = async (): Promise<boolean> => {
 };
 
 /**
- * Clear all auth tokens and data
+ * Effacer tous les tokens et données d'authentification
  */
 export const clearTokens = async (): Promise<void> => {
   try {
-    const keys = [
-      KEYS.ACCESS_TOKEN, 
-      KEYS.REFRESH_TOKEN, 
-      KEYS.ID_TOKEN,
-      KEYS.USER_INFO,
-      KEYS.TOKEN_EXPIRY
-    ];
-    
-    await Promise.all(keys.map(key => SecureStore.deleteItemAsync(key)));
+    const promises = Object.values(KEYS).map(key => removeItem(key));
+    await Promise.all(promises);
   } catch (error) {
     console.error('Failed to clear tokens:', error);
     throw error;

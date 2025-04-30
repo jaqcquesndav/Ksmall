@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { Text, List, Avatar, Divider } from 'react-native-paper';
 import { format } from 'date-fns';
@@ -6,23 +6,7 @@ import { fr } from 'date-fns/locale';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useCurrency } from '../../hooks/useCurrency';
-
-// Types pour les transactions
-interface Transaction {
-  id: string;
-  date: Date;
-  description: string;
-  amount: number;
-  status: string;
-  account?: string;
-  reference?: string;
-  journal?: string; // Ajout du journal comptable associé
-}
-
-interface RecentTransactionsWidgetProps {
-  transactions: Transaction[];
-  isLandscape?: boolean; // Ajout de la prop pour détecter le mode paysage
-}
+import { Transaction, RecentTransactionsWidgetProps } from '../../types/dashboard';
 
 // Type pour les noms d'icônes de MaterialCommunityIcons
 type MaterialCommunityIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -35,7 +19,7 @@ const RecentTransactionsWidget: React.FC<RecentTransactionsWidgetProps> = ({
   isLandscape = false 
 }) => {
   const navigation = useNavigation<any>();
-  const { formatAmount, currency } = useCurrency();
+  const { formatAmount } = useCurrency();
 
   // Formater la date
   const formatDate = (date: Date): string => {

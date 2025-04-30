@@ -2,17 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
 import { generateUniqueId } from '../utils/helpers';
-
-// Define notification types
-export interface Notification {
-  id: string;
-  title: string;
-  body: string;
-  data?: any;
-  read: boolean;
-  createdAt: string;
-  type: 'transaction' | 'system' | 'alert' | 'message';
-}
+import { Notification, NotificationListener, NOTIFICATION_TYPES } from '../types/notification';
 
 // Mock notifications
 const MOCK_NOTIFICATIONS: Notification[] = [
@@ -23,7 +13,7 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     data: { type: 'transaction', id: 'tx123' },
     read: false,
     createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    type: 'transaction'
+    type: NOTIFICATION_TYPES.TRANSACTION
   },
   {
     id: 'n2',
@@ -32,7 +22,7 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     data: { type: 'inventory', id: 'p1' },
     read: false,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-    type: 'alert'
+    type: NOTIFICATION_TYPES.ALERT
   },
   {
     id: 'n3',
@@ -40,7 +30,7 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     body: 'KSMall has been updated to version 1.1.0',
     read: true,
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
-    type: 'system'
+    type: NOTIFICATION_TYPES.SYSTEM
   },
   {
     id: 'n4',
@@ -49,13 +39,11 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     data: { type: 'invoice', id: 'inv042' },
     read: false,
     createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
-    type: 'alert'
+    type: NOTIFICATION_TYPES.ALERT
   }
 ];
 
 const STORAGE_KEY = 'ksmall_notifications';
-
-type NotificationListener = () => void;
 
 class NotificationService {
   private listeners: NotificationListener[] = [];

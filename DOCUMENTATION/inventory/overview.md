@@ -193,6 +193,209 @@ function InventoryScreen() {
 }
 ```
 
+## Mécanismes de Gestion des Erreurs et Fallbacks API
+
+Le module d'inventaire implémente un système robuste et multicouche de gestion des erreurs pour assurer la continuité de service même en cas de problèmes API :
+
+### 1. Stratégie de Cache et d'Expiration
+
+```typescript
+// Dans InventoryApiService.ts
+async getProducts(options?: GetProductsOptions): Promise<InventoryItem[]> {
+  const cacheKey = `products:${JSON.stringify(options || {})}`;
+  
+  try {
+    // Vérifier si des données récentes sont en cache
+    const cachedData = await CacheService.get<InventoryItem[]>(cacheKey);
+    if (cachedData && !options?.forceRefresh) {
+      logger.info('Données d\'inventaire récupérées depuis le cache', { cacheKey });
+      return cachedData;
+    }
+    
+    // Appeler l'API
+    const response = await ApiClient.get('/api/products', { params: options });
+    const products = response.data.data;
+    
+    // Mettre en cache pour 5 minutes
+    await CacheService.set(cacheKey, products, 5 * 60);
+    
+    return products;
+  } catch (error) {
+    logger.error('Erreur lors de la récupération des produits', { error });
+    
+    // Essayer d'utiliser le cache même expiré en cas d'erreur
+    const staleCache = await CacheService.getExpired<InventoryItem[]>(cacheKey);
+    if (staleCache) {
+      logger.warn('Utilisation de données de cache expirées suite à une erreur API');
+      return staleCache;
+    }
+    
+    // Si pas de cache, essayer la base de données locale
+    if (DatabaseService.isAvailable) {
+      const localProducts = await DatabaseService.getTable('products').findAll();
+      if (localProducts.length > 0) {
+        logger.warn('Utilisation de données locales suite à une erreur API');
+        return localProducts.map(convertLocalProductToInventoryItem);
+      }
+    }
+    
+    // En dernier recours, utiliser les données de démo
+    logger.warn('Utilisation de données de démonstration suite à une erreur API');
+    return MockDataService.getDemoProducts(options?.category);
+  }
+}
+```
+
+### 2. File d'Attente pour les Opérations d'Écriture
+
+```typescript
+// Dans InventoryService.ts
+async adjustStock(productId: string, quantity: number, reason: string): Promise<boolean> {
+  try {
+    // Tentative de mise à jour via API
+    const result = await InventoryApiService.adjustStock(productId, quantity, reason);
+    
+    // Synchroniser avec la base de données locale
+    await DatabaseService.updateProductStock(productId, quantity);
+    
+    return result;
+  } catch (error) {
+    logger.error('Erreur lors de l\'ajustement du stock', { error, productId });
+    
+    if (!NetworkService.isConnected) {
+      // En mode hors ligne, enregistrer dans la file d'attente
+      await OfflineQueueService.enqueue('inventory_adjust', {
+        productId,
+        quantity,
+        reason,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Mettre à jour la base de données locale
+      await DatabaseService.updateProductStock(productId, quantity);
+      
+      logger.info('Ajustement de stock mis en file d\'attente pour synchronisation ultérieure');
+      return true; // Succès local en mode hors ligne
+    }
+    
+    throw error; // Ré-émettre l'erreur si en ligne
+  }
+}
+```
+
+### 3. Synchronisation Différentielle
+
+```typescript
+// Dans InventorySyncService.ts
+async synchronizeInventoryData(): Promise<SyncResult> {
+  // Vérifier la dernière synchronisation
+  const lastSync = await SyncHistoryService.getLastSync('inventory');
+  
+  try {
+    // Récupérer uniquement les changements depuis la dernière synchronisation
+    const changes = await InventoryApiService.getChanges(lastSync?.timestamp);
+    
+    // Journaliser l'étendue des changements
+    logger.info('Changements d\'inventaire récupérés', {
+      products: changes.products.length,
+      categories: changes.categories.length,
+      suppliers: changes.suppliers.length
+    });
+    
+    // Appliquer les changements à la base de données locale
+    await DatabaseService.transaction(async (tx) => {
+      for (const product of changes.products) {
+        await tx.upsert('products', product);
+      }
+      
+      for (const category of changes.categories) {
+        await tx.upsert('categories', category);
+      }
+      
+      for (const supplier of changes.suppliers) {
+        await tx.upsert('suppliers', supplier);
+      }
+      
+      // Enregistrer les suppressions
+      for (const id of changes.deletedProductIds) {
+        await tx.update('products', { id, isDeleted: true });
+      }
+    });
+    
+    // Mettre à jour l'historique de synchronisation
+    await SyncHistoryService.recordSync('inventory', {
+      timestamp: new Date().toISOString(),
+      itemCount: changes.products.length + changes.categories.length + changes.suppliers.length,
+      success: true
+    });
+    
+    return {
+      success: true,
+      itemCount: changes.products.length + changes.categories.length + changes.suppliers.length,
+      errors: []
+    };
+  } catch (error) {
+    logger.error('Erreur lors de la synchronisation des données d\'inventaire', { error });
+    
+    // Enregistrer l'échec de synchronisation
+    await SyncHistoryService.recordSync('inventory', {
+      timestamp: new Date().toISOString(),
+      itemCount: 0,
+      success: false,
+      error: error.message
+    });
+    
+    return {
+      success: false,
+      itemCount: 0,
+      errors: [error.message]
+    };
+  }
+}
+```
+
+### 4. Stratégie de Dégradation Progressive
+
+Le module d'inventaire implémente une stratégie de dégradation progressive lorsque des parties de l'API échouent :
+
+1. **Mode Complet** - Toutes les API fonctionnent, fonctionnalités complètes
+2. **Mode Partiellement Connecté** - Certaines API échouent, utiliser les données locales pour ces fonctionnalités
+3. **Mode Lecture Seule** - Les API d'écriture échouent, permettre la navigation mais mettre les modifications en file d'attente
+4. **Mode Entièrement Hors Ligne** - Toutes les API échouent, fonctionner avec les données locales uniquement
+
+```typescript
+// Dans InventoryContext.tsx
+function determineInventoryMode(): 'full' | 'partial' | 'readonly' | 'offline' {
+  if (!NetworkService.isConnected) {
+    return 'offline';
+  }
+  
+  const apiStatuses = APIHealthService.getServiceStatuses();
+  
+  if (apiStatuses.inventory.read === 'healthy' && apiStatuses.inventory.write === 'healthy') {
+    return 'full';
+  }
+  
+  if (apiStatuses.inventory.read === 'healthy' && apiStatuses.inventory.write === 'degraded') {
+    return 'readonly';
+  }
+  
+  if (apiStatuses.inventory.read === 'degraded') {
+    return 'partial';
+  }
+  
+  return 'offline';
+}
+```
+
+## Compatibilité avec les autres modules
+
+Le module d'inventaire est utilisé par d'autres modules de l'application, notamment le tableau de bord et la comptabilité. Pour assurer la compatibilité :
+
+1. **Adaptateurs dédiés** - Des adaptateurs spécifiques convertissent les données d'inventaire pour le tableau de bord
+2. **Types de métriques standardisés** - Les métriques d'inventaire suivent un format standard compatible avec le tableau de bord
+3. **Fallbacks robustes** - Des données de démonstration sont disponibles pour chaque type de métrique
+
 ## API REST
 
 ### Endpoints principaux
@@ -252,6 +455,7 @@ GET /api/products?category=electronics&inStock=true
 2. **Définir des valeurs par défaut** pour toutes les propriétés obligatoires
 3. **Utiliser des types génériques** pour les paramètres et retours de fonctions
 4. **Implémenter des fonctions utilitaires** pour les conversions de types récurrentes
+5. **Ajouter une gestion d'erreur robuste** avec fallback vers des données locales
 
 ## Problèmes courants et solutions
 
@@ -282,18 +486,47 @@ productToInventoryItem(product: Product): Omit<InventoryItem, 'id'> {
 }
 ```
 
+### Problème: Erreurs 500 lors de l'appel aux API d'inventaire pour le dashboard
+
+**Solution**: Implémenter un mécanisme de fallback vers les données locales ou de démo:
+
+```typescript
+// Dans DashboardScreen.tsx
+useEffect(() => {
+  if (inventoryError || !isConnected) {
+    // Si API échoue ou mode hors ligne, charger depuis la base de données locale
+    InventoryService.getInventoryMetrics()
+      .then(metrics => setInventoryMetrics(metrics))
+      .catch(err => {
+        console.warn("Fallback pour les métriques d'inventaire a échoué:", err);
+        // Utiliser des données de démo en dernier recours
+        setInventoryMetrics({
+          totalValue: 23549.85,
+          totalItems: 142,
+          lowStockItems: 3
+        });
+      });
+  }
+}, [inventoryError, isConnected]);
+```
+
 ## Notes de la mise à jour d'avril 2025
 
-L'architecture du module d'inventaire a été mise à jour pour résoudre plusieurs problèmes de typage TypeScript:
+L'architecture du module d'inventaire a été mise à jour pour résoudre plusieurs problèmes de typage TypeScript et améliorer la gestion des erreurs:
 
 1. Implémentation complète de l'architecture d'adaptateurs
 2. Correction des problèmes de propriétés manquantes ou non correspondantes
 3. Ajout de valeurs par défaut pour toutes les propriétés requises
 4. Standardisation des signatures des méthodes API
-5. Amélioration de la gestion des erreurs
+5. Amélioration de la gestion des erreurs avec mécanismes de fallback multiniveaux
+6. Meilleure compatibilité avec le module de tableau de bord pour les métriques d'inventaire
+7. Implémentation de stratégies robustes pour la gestion des données en mode hors ligne
+8. Nouveau système de suivi de la fiabilité des données d'inventaire
+9. Synchronisation différentielle avec pagination pour gérer les grands volumes de données
+10. Intégration bidirectionnelle améliorée avec le module de comptabilité
 
 Ces changements assurent une meilleure robustesse du code et facilitent la maintenance future du module d'inventaire.
 
 ---
 
-_Dernière mise à jour: 25 avril 2025_
+_Dernière mise à jour: 30 avril 2025_

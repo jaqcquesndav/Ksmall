@@ -1,148 +1,224 @@
+import { AUTH_API_ENDPOINT } from '../../config/auth0';
 import { getAccessToken } from '../auth/TokenStorage';
 import Auth0Service from '../auth/Auth0Service';
+import logger from '../../utils/logger';
+import { handleError, ErrorType, executeWithRetry } from '../../utils/errorHandler';
 
-interface RequestOptions extends RequestInit {
+// Types pour l'API client fetch
+interface ApiClientOptions {
+  baseURL: string;
+  timeout?: number;
+  headers?: Record<string, string>;
+}
+
+interface RequestConfig extends RequestInit {
   requiresAuth?: boolean;
-  retries?: number;
+  _retry?: boolean;
+  params?: Record<string, string>;
+  timeout?: number;
+  urlParams?: string; // Ajout de la propriété urlParams pour stocker temporairement l'URL
+}
+
+// Interface pour les erreurs formatées
+interface FormattedError {
+  status?: number;
+  statusText?: string;
+  message: string;
+  data?: any;
 }
 
 /**
- * API client for making authenticated requests to backend services
+ * Classe ApiClient qui utilise fetch au lieu d'axios
+ * Plus robuste et compatible avec React Native sans polyfills
  */
-class ApiClient {
-  private baseUrl: string;
-  private maxRetries: number = 3;
-  
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  }
-  
-  /**
-   * Make a request with automatic token handling
-   */
-  async request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    // Default options
-    const defaultOptions: RequestOptions = {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      requiresAuth: true,
-      retries: 0,
+class FetchApiClient {
+  private baseURL: string;
+  private defaultHeaders: HeadersInit;
+  private timeout: number;
+
+  constructor(options: ApiClientOptions) {
+    this.baseURL = options.baseURL;
+    this.timeout = options.timeout || 30000;
+    this.defaultHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(options.headers || {})
     };
+  }
+
+  /**
+   * Prépare la configuration de la requête en ajoutant les headers d'authentification si nécessaire
+   */
+  private async prepareRequest(config: RequestConfig): Promise<RequestConfig> {
+    const finalConfig = { ...config };
     
-    // Merge options
-    const opts = { ...defaultOptions, ...options };
-    opts.headers = { ...defaultOptions.headers, ...options.headers };
-    
-    // Add authorization header if required
-    if (opts.requiresAuth) {
-      const token = await getAccessToken();
-      if (!token) {
-        throw new Error('No access token available. Please log in.');
-      }
-      
-      opts.headers = {
-        ...opts.headers,
-        Authorization: `Bearer ${token}`,
-      };
-    }
-    
-    // Make the request
-    try {
-      const url = `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-      const response = await fetch(url, opts);
-      
-      // Handle 401 Unauthorized - Token might be expired
-      if (response.status === 401 && opts.retries < this.maxRetries) {
-        // Try to refresh the token
-        const newToken = await Auth0Service.refreshToken();
-        if (newToken) {
-          // Retry the request with the new token
-          return this.request<T>(endpoint, {
-            ...opts,
-            retries: (opts.retries || 0) + 1,
-            headers: {
-              ...opts.headers,
-              Authorization: `Bearer ${newToken}`,
-            },
-          });
-        } else {
-          throw new Error('Unable to refresh authentication token');
+    // Headers par défaut
+    finalConfig.headers = {
+      ...this.defaultHeaders,
+      ...finalConfig.headers
+    };
+
+    // Ajouter le token d'authentification si requis
+    if (finalConfig.requiresAuth !== false) {
+      try {
+        const token = await getAccessToken();
+        if (token) {
+          finalConfig.headers = {
+            ...finalConfig.headers,
+            'Authorization': `Bearer ${token}`
+          };
         }
+      } catch (error) {
+        logger.warn('Error adding auth token to request:', error);
+        // On continue malgré l'erreur pour plus de robustesse
       }
-      
-      // For any other error, throw
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API request failed: ${response.status} - ${errorText}`);
-      }
-      
-      // Return the data
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return response.json();
-      } else {
-        return response.text() as unknown as T;
-      }
-      
-    } catch (error) {
-      console.error(`Error in API request to ${endpoint}:`, error);
-      throw error;
     }
+
+    // Ajouter les paramètres à l'URL si nécessaire
+    if (finalConfig.params) {
+      const queryParams = new URLSearchParams();
+      Object.entries(finalConfig.params).forEach(([key, value]) => {
+        queryParams.append(key, value);
+      });
+      const queryString = queryParams.toString();
+      // Stocker temporairement l'URL dans une propriété temporaire
+      const fullUrl = queryString ? `${queryString}` : '';
+      finalConfig.urlParams = fullUrl; // Utiliser une propriété personnalisée pour stockage temporaire
+    }
+
+    return finalConfig;
   }
-  
+
   /**
-   * GET request
+   * Effectue une requête avec fetch et utilise le gestionnaire d'erreurs robuste
    */
-  async get<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    return this.request<T>(endpoint, { ...options, method: 'GET' });
+  private async request<T>(url: string, config: RequestConfig): Promise<T> {
+    // Utiliser le gestionnaire d'erreurs robuste pour exécuter la requête
+    return await executeWithRetry<T>(
+      async () => {
+        // Préparer la configuration
+        const finalConfig = await this.prepareRequest(config);
+        const fullUrl = url.startsWith('http') ? url : `${this.baseURL}${url}`;
+        
+        // Implémenter un timeout car fetch n'en a pas nativement
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        finalConfig.signal = controller.signal;
+
+        try {
+          const response = await fetch(fullUrl, finalConfig);
+          clearTimeout(timeoutId);
+
+          // Gérer les erreurs 401 (token expiré)
+          if (response.status === 401 && !finalConfig._retry && finalConfig.requiresAuth !== false) {
+            finalConfig._retry = true;
+            
+            try {
+              logger.info('Token expiré, tentative de rafraîchissement...');
+              const newToken = await Auth0Service.refreshToken();
+              
+              if (newToken) {
+                // Mettre à jour l'en-tête d'autorisation et réessayer la requête
+                finalConfig.headers = {
+                  ...finalConfig.headers,
+                  'Authorization': `Bearer ${newToken}`
+                };
+                return this.request<T>(url, finalConfig);
+              }
+            } catch (refreshError) {
+              logger.error('Échec du rafraîchissement du token:', refreshError);
+              throw refreshError;
+            }
+          }
+
+          // Traiter la réponse
+          let data;
+          
+          try {
+            // Essayer de parser en JSON si possible
+            if (response.headers.get('Content-Type')?.includes('application/json')) {
+              data = await response.json();
+            } else {
+              data = await response.text();
+            }
+          } catch (parseError) {
+            // Si le parsing échoue, utiliser le texte brut
+            data = await response.text();
+          }
+
+          if (!response.ok) {
+            const error: FormattedError = {
+              status: response.status,
+              statusText: response.statusText,
+              message: data?.message || `Request failed with status ${response.status}`,
+              data: data
+            };
+            throw error;
+          }
+
+          return data as T;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          
+          // Formater l'erreur
+          if (error.name === 'AbortError') {
+            const timeoutError: FormattedError = {
+              message: `Request timed out after ${this.timeout}ms`,
+            };
+            throw timeoutError;
+          }
+          
+          throw error;
+        }
+      },
+      ErrorType.API,
+      3 // Nombre maximum de tentatives
+    ) as T;
   }
-  
+
   /**
-   * POST request
+   * Méthodes HTTP avec gestion robuste des erreurs
    */
-  async post<T = any>(endpoint: string, data: any, options: RequestOptions = {}): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...options,
+  async get<T>(url: string, config: RequestConfig = {}): Promise<T> {
+    return this.request<T>(url, { ...config, method: 'GET' });
+  }
+
+  async post<T>(url: string, data?: any, config: RequestConfig = {}): Promise<T> {
+    return this.request<T>(url, {
+      ...config,
       method: 'POST',
-      body: JSON.stringify(data),
+      body: data ? JSON.stringify(data) : undefined
     });
   }
-  
-  /**
-   * PUT request
-   */
-  async put<T = any>(endpoint: string, data: any, options: RequestOptions = {}): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...options,
+
+  async put<T>(url: string, data?: any, config: RequestConfig = {}): Promise<T> {
+    return this.request<T>(url, {
+      ...config,
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: data ? JSON.stringify(data) : undefined
     });
   }
-  
-  /**
-   * PATCH request
-   */
-  async patch<T = any>(endpoint: string, data: any, options: RequestOptions = {}): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...options,
+
+  async patch<T>(url: string, data?: any, config: RequestConfig = {}): Promise<T> {
+    return this.request<T>(url, {
+      ...config,
       method: 'PATCH',
-      body: JSON.stringify(data),
+      body: data ? JSON.stringify(data) : undefined
     });
   }
-  
-  /**
-   * DELETE request
-   */
-  async delete<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    return this.request<T>(endpoint, { ...options, method: 'DELETE' });
+
+  async delete<T>(url: string, config: RequestConfig = {}): Promise<T> {
+    return this.request<T>(url, { ...config, method: 'DELETE' });
   }
 }
 
-// Export instances for different API endpoints
-export const authApi = new ApiClient('https://auth-api.kiota-suite.com');
-export const accountingApi = new ApiClient('https://accounting-api.kiota-suite.com');
-export const inventoryApi = new ApiClient('https://inventory-api.kiota-suite.com');
-export const portfolioApi = new ApiClient('https://portfolio-api.kiota-suite.com');
+// Client API pour le service d'authentification
+export const authApi = new FetchApiClient({
+  baseURL: AUTH_API_ENDPOINT,
+});
 
-export default ApiClient;
+// Exporter l'instance et le gestionnaire d'erreurs
+export default {
+  auth: authApi,
+  errorHandler: handleError
+};

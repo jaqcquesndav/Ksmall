@@ -2,16 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card, Text, useTheme } from 'react-native-paper';
 import { formatCurrency } from '../../utils/formatters';
-
-interface AccountBalanceWidgetProps {
-  accountName: string;
-  accountType: string;
-  balance: number;
-  currency?: string;
-  provider?: string;
-  onPress?: () => void;
-  theme?: any; // This is for compatibility with the original code
-}
+import { AccountBalanceWidgetProps } from '../../types/dashboard';
 
 const AccountBalanceWidget: React.FC<AccountBalanceWidgetProps> = ({
   accountName,

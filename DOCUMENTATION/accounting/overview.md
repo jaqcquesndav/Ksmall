@@ -1,10 +1,130 @@
-# API Comptable
+# API Comptable et Services
 
-Ce document décrit les API comptables utilisées dans l'application Ksmall.
+Ce document décrit les API comptables utilisées dans l'application Ksmall ainsi que l'architecture des services associés.
 
 ## Vue d'ensemble
 
 Les API comptables permettent de gérer les opérations financières, les comptes, les transactions comptables, les journaux, les périodes comptables et les rapports financiers.
+
+## Architecture des Services de Comptabilité
+
+### Structure des fichiers
+
+```
+src/
+├── services/
+│   ├── AccountingService.ts       # Service principal pour les opérations comptables
+│   ├── DashboardAccountingService.ts # Service pour intégrer les données comptables au dashboard
+│   └── api/
+│       └── accounting/
+│           └── AccountingApiService.ts # Service API pour les requêtes comptables
+├── hooks/
+│   └── api/
+│       └── useAccounting.ts      # Hooks personnalisés pour les opérations comptables
+├── context/
+│   └── AccountingContext.tsx    # Contexte React pour l'état comptable global
+└── utils/
+    └── adapters/
+        └── accountingAdapters.ts # Adaptateurs pour conversion entre types service et domaine
+```
+
+### Flux de Données Comptables
+
+1. **Saisie des Données** : L'utilisateur saisit les données comptables via l'interface utilisateur
+2. **Traitement par les Hooks** : Les hooks `useAccounting()` appellent les méthodes appropriées de `AccountingService`
+3. **Communication avec l'API** : `AccountingService` utilise `AccountingApiService` pour les requêtes au backend
+4. **Transformation des Données** : Les adaptateurs convertissent les données entre les formats service et domaine
+5. **Mise à jour de l'État** : Le contexte `AccountingContext` est mis à jour avec les nouvelles données
+
+### Mécanismes de Gestion des Erreurs
+
+L'application implémente plusieurs niveaux de gestion d'erreurs pour les opérations comptables :
+
+1. **Validation Préalable** : Vérification de l'équilibre débit/crédit avant soumission
+2. **Gestion des Erreurs API** : Capture et classification des erreurs de requête
+3. **Mécanismes de Fallback** : Utilisation de données locales ou en cache en cas d'échec API
+4. **Journalisation des Erreurs** : Toutes les erreurs sont enregistrées pour diagnostic
+
+### Exemple de Gestion d'Erreur
+
+```typescript
+// Exemple de gestion d'erreur dans AccountingService
+async createTransaction(transactionData: Transaction): Promise<ServiceTransaction> {
+  try {
+    // Validation locale avant envoi à l'API
+    if (!this.isTransactionBalanced(transactionData)) {
+      throw new Error('La transaction est déséquilibrée');
+    }
+    
+    // Tentative d'enregistrement via l'API
+    const result = await AccountingApiService.createTransaction(
+      domainTransactionToServiceTransaction(transactionData)
+    );
+    
+    return result;
+  } catch (error) {
+    // Journalisation de l'erreur
+    logger.error('Erreur lors de la création de la transaction', error);
+    
+    // Stockage local pour synchronisation ultérieure si hors ligne
+    if (!NetworkService.isConnected) {
+      await OfflineQueueService.queueTransaction(transactionData);
+      logger.info('Transaction mise en file d\'attente pour synchronisation ultérieure');
+      
+      // Retourner une transaction temporaire avec ID local
+      return {
+        ...domainTransactionToServiceTransaction(transactionData),
+        id: `temp-${Date.now()}`,
+        status: 'pending',
+        syncStatus: 'queued'
+      };
+    }
+    
+    throw error;
+  }
+}
+```
+
+## Intégration avec le Dashboard
+
+Le module comptable est fortement intégré avec le tableau de bord via le service `DashboardAccountingService` :
+
+1. **Métriques Financières** : Le service calcule des métriques comme la rentabilité et la trésorerie
+2. **Alertes Comptables** : Détection automatique des anomalies dans les transactions
+3. **Données de Graphiques** : Préparation des données pour les visualisations du tableau de bord
+
+### Exemple d'intégration
+
+```typescript
+// Dans DashboardAccountingService
+async getFinancialMetrics() {
+  try {
+    // Tentative de récupération des données de l'API
+    const apiData = await AccountingApiService.getFinancialMetrics();
+    return apiData;
+  } catch (error) {
+    logger.error('Erreur lors de la récupération des métriques financières', error);
+    
+    // Fallback vers les données locales
+    try {
+      const localData = await this.calculateMetricsFromLocalData();
+      return localData;
+    } catch (localError) {
+      // En dernier recours, utiliser des données de démonstration
+      return MockDataService.getFinancialMetrics();
+    }
+  }
+}
+```
+
+## Mode Hors Ligne
+
+Le module comptable implémente une prise en charge robuste du mode hors ligne :
+
+1. **Stockage Local** : Les transactions sont temporairement stockées dans la base de données locale
+2. **File d'Attente de Synchronisation** : Les opérations hors ligne sont enregistrées pour traitement ultérieur
+3. **Résolution de Conflits** : Mécanismes pour résoudre les conflits lors de la synchronisation
+4. **Identifiants Temporaires** : Attribution d'IDs temporaires aux transactions avant synchronisation
 
 ## Endpoints
 
@@ -570,3 +690,38 @@ Les API comptables permettent de gérer les opérations financières, les compte
 5. Suivre les normes comptables applicables (SYSCOA/OHADA)
 6. Effectuer des audits périodiques des comptes
 7. Configurer des droits d'accès appropriés pour les fonctions comptables sensibles
+
+## Problèmes Courants et Solutions
+
+### Problème: Erreurs lors de la création de transactions en mode hors ligne
+
+**Solution**: 
+- Vérifier la connexion réseau avant de soumettre la transaction
+- Utiliser `OfflineQueueService` pour mettre en file d'attente les transactions
+- Synchroniser les données dès que la connectivité est rétablie
+
+### Problème: Incohérences entre les données du tableau de bord et les données comptables
+
+**Solution**:
+- Utiliser les adaptateurs appropriés pour convertir les types de données
+- Implémenter un mécanisme de cache avec TTL pour les données fréquemment consultées
+- Forcer le rafraîchissement des données après des opérations critiques
+
+### Problème: Erreur 409 - Transaction déséquilibrée
+
+**Solution**:
+- Implémenter une validation côté client avant soumission
+- Vérifier que la somme des débits est égale à la somme des crédits
+- Utiliser l'utilitaire `isTransactionBalanced()` avant d'appeler l'API
+
+## Mises à jour récentes (Avril 2025)
+
+- Amélioration de la gestion des erreurs API avec fallbacks automatiques
+- Optimisation de la synchronisation des transactions en mode hors ligne
+- Intégration améliorée avec le module de tableau de bord
+- Support complet du plan comptable SYSCOHADA révisé
+- Ajout de validations côté client pour une détection plus précoce des erreurs
+
+---
+
+_Dernière mise à jour: 30 avril 2025_

@@ -1,682 +1,906 @@
 import * as SQLite from 'expo-sqlite';
-import { generateUniqueId } from '../utils/helpers';
 import DatabaseService from './DatabaseService';
+import SyncService, { SyncOperationType } from './SyncService';
 import logger from '../utils/logger';
-import { inventoryMockData } from '../data/mockData';
-
-export interface InventoryItem {
-  id: string;
-  sku: string;
-  name: string;
-  description?: string;
-  category: string;
-  subcategory: string;
-  quantity: number;
-  price: number;
-  cost: number;
-  reorderPoint: number;
-  supplier: string;
-  location: string;
-  imageUrl?: string | null;
-}
-
-export interface InventoryTransaction {
-  id: string;
-  type: 'purchase' | 'sale' | 'adjustment';
-  date: string;
-  reference: string;
-  items: {
-    productId: string;
-    quantity: number;
-    unitPrice?: number;
-    unitCost?: number;
-    totalPrice?: number;
-    totalCost?: number;
-    reason?: string;
-  }[];
-  supplier?: string;
-  customer?: string;
-  status: 'pending' | 'completed' | 'cancelled';
-  notes?: string;
-  totalAmount: number;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  address?: string;
-  paymentTerms?: string;
-  notes?: string;
-  productCategories?: string[];
-}
+import { 
+  ServiceProduct, 
+  ServiceSupplier, 
+  ServiceInventoryTransaction,
+  Stock 
+} from '../types/inventory';
 
 class InventoryService {
+  private static instance: InventoryService;
+  private db: SQLite.WebSQLDatabase | null = null;
+  private initialized: boolean = false;
+
+  private constructor() {}
+
   /**
-   * Récupère tous les produits de l'inventaire
+   * Obtenir l'instance singleton du service d'inventaire
    */
-  async getProducts(): Promise<InventoryItem[]> {
+  public static getInstance(): InventoryService {
+    if (!InventoryService.instance) {
+      InventoryService.instance = new InventoryService();
+    }
+    return InventoryService.instance;
+  }
+
+  /**
+   * Initialiser le service d'inventaire
+   */
+  public async init(): Promise<void> {
+    if (this.initialized) return;
+
     try {
-      const db = await DatabaseService.getDBConnection();
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `SELECT * FROM inventory_items ORDER BY name`,
-        []
+      this.db = await DatabaseService.getDatabase();
+      await this.setupTables();
+      this.initialized = true;
+      logger.debug('Service d\'inventaire initialisé avec succès');
+    } catch (error) {
+      logger.error('Erreur lors de l\'initialisation du service d\'inventaire:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Configuration des tables nécessaires
+   */
+  private async setupTables(): Promise<void> {
+    if (!this.db) return;
+
+    // Création de la table des produits
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'products',
+      `id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT,
+      category_id INTEGER NOT NULL,
+      price REAL NOT NULL,
+      cost_price REAL,
+      quantity REAL NOT NULL DEFAULT 0,
+      min_quantity REAL,
+      unit_id INTEGER,
+      tax_id INTEGER,
+      images TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+    );
+
+    // Création des tables associées
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'product_categories',
+      `id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+    );
+
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'units',
+      `id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+    );
+    
+    // Création de la table des fournisseurs si elle n'existe pas déjà
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'suppliers',
+      `id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact_person TEXT,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      payment_terms TEXT,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+    );
+    
+    // Création de la table des transactions d'inventaire
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'inventory_transactions',
+      `id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      date TEXT NOT NULL,
+      reference TEXT,
+      status TEXT NOT NULL,
+      notes TEXT,
+      total_amount REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+    );
+    
+    // Création de la table des éléments de transaction
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'inventory_transaction_items',
+      `id INTEGER PRIMARY KEY AUTOINCREMENT,
+      transaction_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
+      FOREIGN KEY (transaction_id) REFERENCES inventory_transactions(id) ON DELETE CASCADE`
+    );
+    
+    // Table des niveaux de stock
+    await DatabaseService.createTableIfNotExists(
+      this.db,
+      'stock_levels',
+      `id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0,
+      location TEXT,
+      last_updated TEXT NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id)`
+    );
+
+    logger.debug('Tables d\'inventaire créées avec succès');
+  }
+
+  /**
+   * Obtenir tous les produits avec leur statut de synchronisation
+   */
+  public async getAllProducts(): Promise<(ServiceProduct & {_syncStatus?: string, _lastSynced?: string | null})[]> {
+    if (!this.initialized) await this.init();
+
+    try {
+      // Utiliser la méthode statique correctement
+      return await SyncService.getLocalDataWithSyncStatus(
+        'products',
+        `SELECT p.*, c.name as category_name, u.name as unit_name, u.symbol as unit_symbol
+        FROM products p 
+        LEFT JOIN product_categories c ON p.category_id = c.id
+        LEFT JOIN units u ON p.unit_id = u.id
+        ORDER BY p.name ASC`
       );
-      
-      if (error || !result) {
-        logger.error('Erreur lors de la récupération des produits:', error);
-        throw error || new Error('Erreur lors de la récupération des produits');
-      }
-      
-      const products: InventoryItem[] = [];
-      for (let i = 0; i < result.rows.length; i++) {
-        const row = result.rows.item(i);
-        products.push({
-          id: row.id.toString(),
-          sku: row.sku || '',
-          name: row.name,
-          description: row.description,
-          category: row.category || '',
-          subcategory: row.subcategory || '',
-          quantity: row.quantity,
-          price: row.price,
-          cost: row.cost,
-          reorderPoint: row.reorder_point,
-          supplier: row.supplier || '',
-          location: row.location || '',
-          imageUrl: row.image_url || null
-        });
-      }
-      
-      return products;
     } catch (error) {
       logger.error('Erreur lors de la récupération des produits:', error);
-      // Si la requête échoue, retourner les données mock comme solution temporaire
-      logger.warn('Utilisation des données mock comme fallback');
-      return inventoryMockData.products;
+      throw error;
     }
   }
   
   /**
-   * Récupère un produit spécifique par son ID
+   * Alias pour getAllProducts pour respecter l'interface attendue par le contexte
    */
-  async getProductById(id: string): Promise<InventoryItem | null> {
+  public async getProducts(): Promise<ServiceProduct[]> {
+    return this.getAllProducts();
+  }
+
+  /**
+   * Obtenir un produit par son ID
+   */
+  public async getProductById(id: number | string): Promise<ServiceProduct | null> {
+    if (!this.initialized) await this.init();
+    if (!this.db) return null;
+
     try {
-      const db = await DatabaseService.getDBConnection();
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `SELECT * FROM inventory_items WHERE id = ?`,
+      // Convertir l'ID en nombre si c'est une chaîne
+      const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+      
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        `SELECT p.*, c.name as category_name, u.name as unit_name, u.symbol as unit_symbol
+        FROM products p 
+        LEFT JOIN product_categories c ON p.category_id = c.id
+        LEFT JOIN units u ON p.unit_id = u.id
+        WHERE p.id = ?`,
+        [numericId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows.item(0) as ServiceProduct;
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération du produit #${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Ajouter un nouveau produit
+   */
+  public async addProduct(product: Omit<ServiceProduct, 'id'>): Promise<ServiceProduct> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+
+    try {
+      const result = await SyncService.performLocalOperation(
+        SyncOperationType.CREATE,
+        'products',
+        '/api/inventory/products',
+        product,
+        `INSERT INTO products (
+          product_code, name, description, category_id, price, cost_price, 
+          quantity, min_quantity, unit_id, tax_id, images
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          product.product_code,
+          product.name,
+          product.description || null,
+          product.category_id,
+          product.price,
+          product.cost_price || null,
+          product.quantity,
+          product.min_quantity || null,
+          product.unit_id || null,
+          product.tax_id || null,
+          product.images || null
+        ]
+      );
+
+      logger.info(`Nouveau produit "${product.name}" ajouté localement`);
+      // Récupérer le produit complet avec son ID
+      const insertId = result.insertId as number;
+      const newProduct = await this.getProductById(insertId);
+      if (!newProduct) {
+        throw new Error(`Impossible de récupérer le produit après l'insertion`);
+      }
+      return newProduct;
+    } catch (error) {
+      logger.error('Erreur lors de l\'ajout du produit:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mettre à jour un produit existant
+   */
+  public async updateProduct(id: number | string, updates: Partial<ServiceProduct>): Promise<ServiceProduct> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    // Convertir l'ID en nombre si c'est une chaîne
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+
+    // Récupérer les données actuelles pour les synchroniser correctement
+    const currentProduct = await this.getProductById(numericId);
+    if (!currentProduct) {
+      throw new Error(`Le produit avec l'identifiant ${id} n'existe pas`);
+    }
+
+    // Construire les parties de la requête SQL de mise à jour
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (key !== 'id' && key !== 'created_at') {
+        updateFields.push(`${key} = ?`);
+        updateValues.push(value);
+      }
+    });
+
+    // Ajouter la date de mise à jour
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+
+    // Ajouter l'ID pour la clause WHERE
+    updateValues.push(numericId);
+
+    try {
+      // Fusionner les données pour la synchronisation
+      const mergedProductData = {
+        ...currentProduct,
+        ...updates,
+        id: numericId
+      };
+
+      await SyncService.performLocalOperation(
+        SyncOperationType.UPDATE,
+        'products',
+        `/api/inventory/products/${numericId}`,
+        mergedProductData,
+        `UPDATE products SET ${updateFields.join(', ')} WHERE id = ?`,
+        updateValues
+      );
+
+      logger.info(`Produit #${id} mis à jour localement`);
+      
+      // Récupérer le produit mis à jour
+      const updatedProduct = await this.getProductById(numericId);
+      if (!updatedProduct) {
+        throw new Error(`Impossible de récupérer le produit après la mise à jour`);
+      }
+      return updatedProduct;
+    } catch (error) {
+      logger.error(`Erreur lors de la mise à jour du produit #${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Supprimer un produit
+   */
+  public async deleteProduct(id: number | string): Promise<boolean> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    // Convertir l'ID en nombre si c'est une chaîne
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+
+    // Récupérer les données actuelles pour les synchroniser correctement
+    const currentProduct = await this.getProductById(numericId);
+    if (!currentProduct) {
+      throw new Error(`Le produit avec l'identifiant ${id} n'existe pas`);
+    }
+
+    try {
+      await SyncService.performLocalOperation(
+        SyncOperationType.DELETE,
+        'products',
+        `/api/inventory/products/${numericId}`,
+        { id: numericId },
+        'DELETE FROM products WHERE id = ?',
+        [numericId]
+      );
+
+      logger.info(`Produit #${id} supprimé localement`);
+      return true;
+    } catch (error) {
+      logger.error(`Erreur lors de la suppression du produit #${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mettre à jour le stock d'un produit
+   */
+  public async updateStock(id: number | string, newQuantity: number): Promise<boolean> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    // Convertir l'ID en nombre si c'est une chaîne
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+
+    try {
+      // Récupérer les données actuelles pour les synchroniser correctement
+      const currentProduct = await this.getProductById(numericId);
+      if (!currentProduct) {
+        throw new Error(`Le produit avec l'identifiant ${id} n'existe pas`);
+      }
+      
+      // Mise à jour partielle spécifique au stock
+      await SyncService.performLocalOperation(
+        SyncOperationType.UPDATE,
+        'products',
+        `/api/inventory/products/${numericId}/stock`,
+        { id: numericId, quantity: newQuantity },
+        'UPDATE products SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newQuantity, numericId]
+      );
+
+      logger.info(`Stock du produit #${id} mis à jour à ${newQuantity}`);
+      return true;
+    } catch (error) {
+      logger.error(`Erreur lors de la mise à jour du stock pour le produit #${id}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Obtenir tous les fournisseurs
+   */
+  public async getSuppliers(): Promise<ServiceSupplier[]> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        `SELECT * FROM suppliers ORDER BY name ASC`
+      );
+      
+      const suppliers: ServiceSupplier[] = [];
+      for (let i = 0; i < result.rows.length; i++) {
+        const item = result.rows.item(i);
+        suppliers.push({
+          id: item.id,
+          name: item.name,
+          contactPerson: item.contact_person,
+          email: item.email,
+          phone: item.phone,
+          address: item.address,
+          paymentTerms: item.payment_terms,
+          notes: item.notes,
+          productCategories: []  // À remplir si nécessaire
+        });
+      }
+      
+      return suppliers;
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des fournisseurs:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Obtenir un fournisseur par son ID
+   */
+  public async getSupplierById(id: string): Promise<ServiceSupplier | null> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        'SELECT * FROM suppliers WHERE id = ?',
         [id]
       );
       
-      if (error || !result || result.rows.length === 0) {
-        // Si le produit n'est pas trouvé dans la base de données, essayer les données mock
-        const mockProduct = inventoryMockData.products.find(p => p.id === id);
-        if (mockProduct) {
-          return mockProduct;
-        }
+      if (result.rows.length === 0) {
         return null;
       }
       
-      const row = result.rows.item(0);
+      const item = result.rows.item(0);
       return {
-        id: row.id.toString(),
-        sku: row.sku || '',
-        name: row.name,
-        description: row.description,
-        category: row.category || '',
-        subcategory: row.subcategory || '',
-        quantity: row.quantity,
-        price: row.price,
-        cost: row.cost,
-        reorderPoint: row.reorder_point,
-        supplier: row.supplier || '',
-        location: row.location || '',
-        imageUrl: row.image_url || null
+        id: item.id,
+        name: item.name,
+        contactPerson: item.contact_person,
+        email: item.email,
+        phone: item.phone,
+        address: item.address,
+        paymentTerms: item.payment_terms,
+        notes: item.notes,
+        productCategories: []  // À remplir si nécessaire
       };
     } catch (error) {
-      logger.error(`Erreur lors de la récupération du produit ${id}:`, error);
-      // Si la requête échoue, essayer de trouver le produit dans les données mock
-      const mockProduct = inventoryMockData.products.find(p => p.id === id);
-      if (mockProduct) {
-        return mockProduct;
-      }
-      return null;
+      logger.error(`Erreur lors de la récupération du fournisseur #${id}:`, error);
+      throw error;
     }
   }
   
   /**
-   * Ajoute un nouveau produit à l'inventaire
+   * Ajouter un nouveau fournisseur
    */
-  async addProduct(product: Omit<InventoryItem, 'id'>): Promise<InventoryItem> {
+  public async addSupplier(supplier: Omit<ServiceSupplier, 'id'>): Promise<ServiceSupplier> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
     try {
-      const db = await DatabaseService.getDBConnection();
-      const newId = generateUniqueId();
+      // Générer un ID unique pour le fournisseur
+      const id = `sup-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `INSERT INTO inventory_items (
-          name, sku, description, category, subcategory, 
-          quantity, price, cost, reorder_point, supplier, location, image_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      await DatabaseService.executeQuery(
+        this.db,
+        `INSERT INTO suppliers (
+          id, name, contact_person, email, phone, address, payment_terms, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          product.name, 
-          product.sku, 
-          product.description || '', 
-          product.category, 
-          product.subcategory,
-          product.quantity, 
-          product.price, 
-          product.cost, 
-          product.reorderPoint, 
-          product.supplier, 
-          product.location,
-          product.imageUrl || null
+          id,
+          supplier.name,
+          supplier.contactPerson || null,
+          supplier.email || null,
+          supplier.phone || null,
+          supplier.address || null,
+          supplier.paymentTerms || null,
+          supplier.notes || null
         ]
       );
       
-      if (error || !result) {
-        logger.error('Erreur lors de la création du produit:', error);
-        throw error || new Error('Erreur lors de la création du produit');
-      }
+      logger.info(`Nouveau fournisseur "${supplier.name}" ajouté`);
       
-      // Récupérer l'ID généré automatiquement
-      const productId = result.insertId?.toString() || newId;
-      
-      // Retourner le produit avec l'ID généré
+      // Retourner le fournisseur avec son ID
       return {
-        ...product,
-        id: productId
+        ...supplier,
+        id
       };
-    } catch (error) {
-      logger.error('Erreur lors de la création du produit:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Met à jour un produit existant
-   */
-  async updateProduct(id: string, updates: Partial<InventoryItem>): Promise<InventoryItem> {
-    try {
-      const db = await DatabaseService.getDBConnection();
-      
-      // Construire la requête de mise à jour dynamiquement
-      const updateFields: string[] = [];
-      const values: any[] = [];
-      
-      if (updates.name !== undefined) {
-        updateFields.push('name = ?');
-        values.push(updates.name);
-      }
-      
-      if (updates.sku !== undefined) {
-        updateFields.push('sku = ?');
-        values.push(updates.sku);
-      }
-      
-      if (updates.description !== undefined) {
-        updateFields.push('description = ?');
-        values.push(updates.description);
-      }
-      
-      if (updates.category !== undefined) {
-        updateFields.push('category = ?');
-        values.push(updates.category);
-      }
-      
-      if (updates.subcategory !== undefined) {
-        updateFields.push('subcategory = ?');
-        values.push(updates.subcategory);
-      }
-      
-      if (updates.quantity !== undefined) {
-        updateFields.push('quantity = ?');
-        values.push(updates.quantity);
-      }
-      
-      if (updates.price !== undefined) {
-        updateFields.push('price = ?');
-        values.push(updates.price);
-      }
-      
-      if (updates.cost !== undefined) {
-        updateFields.push('cost = ?');
-        values.push(updates.cost);
-      }
-      
-      if (updates.reorderPoint !== undefined) {
-        updateFields.push('reorder_point = ?');
-        values.push(updates.reorderPoint);
-      }
-      
-      if (updates.supplier !== undefined) {
-        updateFields.push('supplier = ?');
-        values.push(updates.supplier);
-      }
-      
-      if (updates.location !== undefined) {
-        updateFields.push('location = ?');
-        values.push(updates.location);
-      }
-      
-      if (updates.imageUrl !== undefined) {
-        updateFields.push('image_url = ?');
-        values.push(updates.imageUrl);
-      }
-      
-      if (updateFields.length === 0) {
-        // Rien à mettre à jour
-        const currentProduct = await this.getProductById(id);
-        if (!currentProduct) {
-          throw new Error(`Produit avec l'ID ${id} non trouvé`);
-        }
-        return currentProduct;
-      }
-      
-      // Ajouter l'ID à la fin des valeurs pour la clause WHERE
-      values.push(id);
-      
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `UPDATE inventory_items SET ${updateFields.join(', ')} WHERE id = ?`,
-        values
-      );
-      
-      if (error || !result) {
-        logger.error(`Erreur lors de la mise à jour du produit ${id}:`, error);
-        throw error || new Error(`Erreur lors de la mise à jour du produit ${id}`);
-      }
-      
-      if (result.rowsAffected === 0) {
-        throw new Error(`Produit avec l'ID ${id} non trouvé`);
-      }
-      
-      // Récupérer et retourner le produit mis à jour
-      const updatedProduct = await this.getProductById(id);
-      if (!updatedProduct) {
-        throw new Error(`Produit avec l'ID ${id} non trouvé après la mise à jour`);
-      }
-      
-      return updatedProduct;
-    } catch (error) {
-      logger.error(`Erreur lors de la mise à jour du produit ${id}:`, error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Supprime un produit
-   */
-  async deleteProduct(id: string): Promise<boolean> {
-    try {
-      const db = await DatabaseService.getDBConnection();
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `DELETE FROM inventory_items WHERE id = ?`,
-        [id]
-      );
-      
-      if (error || !result) {
-        logger.error(`Erreur lors de la suppression du produit ${id}:`, error);
-        throw error || new Error(`Erreur lors de la suppression du produit ${id}`);
-      }
-      
-      return result.rowsAffected > 0;
-    } catch (error) {
-      logger.error(`Erreur lors de la suppression du produit ${id}:`, error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Ajuste la quantité d'un produit
-   */
-  async adjustStock(
-    productId: string, 
-    adjustmentType: 'add' | 'remove' | 'set', 
-    quantity: number, 
-    reason: string,
-    reference?: string,
-    notes?: string
-  ): Promise<InventoryItem> {
-    try {
-      const db = await DatabaseService.getDBConnection();
-      
-      // Récupérer le produit actuel
-      const currentProduct = await this.getProductById(productId);
-      if (!currentProduct) {
-        throw new Error(`Produit avec l'ID ${productId} non trouvé`);
-      }
-      
-      // Calculer la nouvelle quantité
-      let newQuantity = currentProduct.quantity;
-      switch (adjustmentType) {
-        case 'add':
-          newQuantity += quantity;
-          break;
-        case 'remove':
-          newQuantity = Math.max(0, newQuantity - quantity);
-          break;
-        case 'set':
-          newQuantity = Math.max(0, quantity);
-          break;
-      }
-      
-      // Mettre à jour le stock
-      const [updateResult, updateError] = await DatabaseService.executeQuery(
-        db,
-        `UPDATE inventory_items SET quantity = ? WHERE id = ?`,
-        [newQuantity, productId]
-      );
-      
-      if (updateError || !updateResult) {
-        logger.error(`Erreur lors de l'ajustement du stock pour le produit ${productId}:`, updateError);
-        throw updateError || new Error(`Erreur lors de l'ajustement du stock pour le produit ${productId}`);
-      }
-      
-      // Créer une transaction d'inventaire pour suivre le mouvement
-      const transactionId = generateUniqueId();
-      const now = new Date().toISOString();
-      const transactionRef = reference || `ADJ-${Date.now().toString().slice(-6)}`;
-      
-      // Enregistrer la transaction d'ajustement de stock
-      await this.recordInventoryTransaction({
-        id: transactionId,
-        type: 'adjustment',
-        date: now,
-        reference: transactionRef,
-        items: [{
-          productId,
-          quantity: adjustmentType === 'add' ? quantity : (adjustmentType === 'remove' ? -quantity : newQuantity - currentProduct.quantity),
-          reason
-        }],
-        status: 'completed',
-        notes: notes || `Ajustement de stock: ${reason}`,
-        totalAmount: 0 // Les ajustements n'ont pas de montant monétaire
-      });
-      
-      // Récupérer et retourner le produit mis à jour
-      return {
-        ...currentProduct,
-        quantity: newQuantity
-      };
-    } catch (error) {
-      logger.error(`Erreur lors de l'ajustement du stock pour le produit ${productId}:`, error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Récupère les produits à faible stock (sous le point de réapprovisionnement)
-   */
-  async getLowStockProducts(): Promise<InventoryItem[]> {
-    try {
-      const db = await DatabaseService.getDBConnection();
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `SELECT * FROM inventory_items WHERE quantity <= reorder_point ORDER BY name`,
-        []
-      );
-      
-      if (error || !result) {
-        logger.error('Erreur lors de la récupération des produits à faible stock:', error);
-        throw error || new Error('Erreur lors de la récupération des produits à faible stock');
-      }
-      
-      const products: InventoryItem[] = [];
-      for (let i = 0; i < result.rows.length; i++) {
-        const row = result.rows.item(i);
-        products.push({
-          id: row.id.toString(),
-          sku: row.sku || '',
-          name: row.name,
-          description: row.description,
-          category: row.category || '',
-          subcategory: row.subcategory || '',
-          quantity: row.quantity,
-          price: row.price,
-          cost: row.cost,
-          reorderPoint: row.reorder_point,
-          supplier: row.supplier || '',
-          location: row.location || '',
-          imageUrl: row.image_url || null
-        });
-      }
-      
-      return products;
-    } catch (error) {
-      logger.error('Erreur lors de la récupération des produits à faible stock:', error);
-      // Utiliser les données mock comme fallback
-      return inventoryMockData.products.filter(p => p.quantity <= p.reorderPoint);
-    }
-  }
-  
-  /**
-   * Récupère les produits par catégorie
-   */
-  async getProductsByCategory(category: string): Promise<InventoryItem[]> {
-    try {
-      const db = await DatabaseService.getDBConnection();
-      const [result, error] = await DatabaseService.executeQuery(
-        db,
-        `SELECT * FROM inventory_items WHERE category = ? ORDER BY name`,
-        [category]
-      );
-      
-      if (error || !result) {
-        logger.error(`Erreur lors de la récupération des produits de la catégorie ${category}:`, error);
-        throw error || new Error(`Erreur lors de la récupération des produits de la catégorie ${category}`);
-      }
-      
-      const products: InventoryItem[] = [];
-      for (let i = 0; i < result.rows.length; i++) {
-        const row = result.rows.item(i);
-        products.push({
-          id: row.id.toString(),
-          sku: row.sku || '',
-          name: row.name,
-          description: row.description,
-          category: row.category || '',
-          subcategory: row.subcategory || '',
-          quantity: row.quantity,
-          price: row.price,
-          cost: row.cost,
-          reorderPoint: row.reorder_point,
-          supplier: row.supplier || '',
-          location: row.location || '',
-          imageUrl: row.image_url || null
-        });
-      }
-      
-      return products;
-    } catch (error) {
-      logger.error(`Erreur lors de la récupération des produits de la catégorie ${category}:`, error);
-      // Utiliser les données mock comme fallback
-      return inventoryMockData.products.filter(p => p.category === category);
-    }
-  }
-  
-  /**
-   * Récupère les fournisseurs
-   */
-  async getSuppliers(): Promise<Supplier[]> {
-    // À implémenter quand la table des fournisseurs sera créée
-    // Pour le moment, retourner les données mock
-    return inventoryMockData.suppliers || [];
-  }
-  
-  /**
-   * Ajoute un nouveau fournisseur
-   */
-  async addSupplier(supplier: Supplier): Promise<Supplier> {
-    try {
-      // À implémenter quand la table des fournisseurs sera créée
-      // Pour le moment, simuler une création réussie
-      logger.info('Ajout d\'un fournisseur (simulation):', supplier);
-      
-      // Dans une implémentation réelle, on ajouterait le fournisseur à la base de données
-      // Pour cette simulation, on retourne simplement le fournisseur tel quel
-      return supplier;
     } catch (error) {
       logger.error('Erreur lors de l\'ajout du fournisseur:', error);
       throw error;
     }
   }
-
+  
   /**
-   * Get supplier by ID
+   * Mettre à jour un fournisseur existant
    */
-  async getSupplierById(id: string): Promise<Supplier | null> {
-    // For now, get all suppliers and find the one with matching ID
-    const suppliers = await this.getSuppliers();
-    return suppliers.find(supplier => supplier.id === id) || null;
-  }
-
-  /**
-   * Update a supplier
-   */
-  async updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier> {
-    // Mock implementation until database support is added
-    logger.info(`Updating supplier ${id}`, updates);
+  public async updateSupplier(id: string, updates: Partial<ServiceSupplier>): Promise<ServiceSupplier> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
     
-    const suppliers = await this.getSuppliers();
-    const supplierIndex = suppliers.findIndex(supplier => supplier.id === id);
-    
-    if (supplierIndex === -1) {
-      throw new Error(`Supplier with ID ${id} not found`);
+    // Vérifier si le fournisseur existe
+    const existingSupplier = await this.getSupplierById(id);
+    if (!existingSupplier) {
+      throw new Error(`Le fournisseur avec l'identifiant ${id} n'existe pas`);
     }
     
-    // Create updated supplier
-    const updatedSupplier = {
-      ...suppliers[supplierIndex],
-      ...updates
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+    
+    // Mapper les champs du fournisseur aux colonnes de la base de données
+    const fieldMap: Record<string, string> = {
+      name: 'name',
+      contactPerson: 'contact_person',
+      email: 'email',
+      phone: 'phone',
+      address: 'address',
+      paymentTerms: 'payment_terms',
+      notes: 'notes'
     };
     
-    // In a real implementation, this would update the database
-    return updatedSupplier;
-  }
-
-  /**
-   * Delete a supplier
-   */
-  async deleteSupplier(id: string): Promise<boolean> {
-    // Mock implementation until database support is added
-    logger.info(`Deleting supplier ${id}`);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (key !== 'id' && key !== 'productCategories' && fieldMap[key]) {
+        updateFields.push(`${fieldMap[key]} = ?`);
+        updateValues.push(value);
+      }
+    });
     
-    // In a real implementation, this would delete from the database
-    return true;
-  }
-
-  /**
-   * Record a new inventory transaction
-   */
-  async recordInventoryTransaction(transaction: InventoryTransaction): Promise<InventoryTransaction> {
-    // Mock implementation until database support is added
-    logger.info('Recording inventory transaction', transaction);
+    if (updateFields.length === 0) {
+      return existingSupplier; // Rien à mettre à jour
+    }
     
-    // In a real implementation, this would create a transaction in the database
-    return transaction;
-  }
-
-  /**
-   * Get all inventory transactions
-   */
-  async getInventoryTransactions(): Promise<InventoryTransaction[]> {
+    // Ajouter l'ID pour la clause WHERE
+    updateValues.push(id);
+    
     try {
-      // Mock implementation until database support is added
-      logger.info('Getting inventory transactions');
+      await DatabaseService.executeQuery(
+        this.db,
+        `UPDATE suppliers SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        updateValues
+      );
       
-      // In a real implementation, this would fetch from the database
-      // For now, return mock data
-      return [
-        {
-          id: 'tx-' + Date.now(),
-          type: 'purchase',
-          date: new Date().toISOString(),
-          reference: 'PO-' + Math.floor(Math.random() * 1000),
-          items: [
-            {
-              productId: 'prod-1',
-              quantity: 10,
-              unitPrice: 20,
-              unitCost: 15,
-              totalPrice: 200,
-              totalCost: 150
-            }
-          ],
-          supplier: 'supplier-1',
-          status: 'completed',
-          notes: 'Restock purchase',
-          totalAmount: 200
-        }
-      ];
+      logger.info(`Fournisseur #${id} mis à jour`);
+      
+      // Retourner le fournisseur mis à jour
+      return {
+        ...existingSupplier,
+        ...updates
+      };
     } catch (error) {
-      logger.error('Error getting inventory transactions:', error);
-      return [];
+      logger.error(`Erreur lors de la mise à jour du fournisseur #${id}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Supprimer un fournisseur
+   */
+  public async deleteSupplier(id: string): Promise<boolean> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      await DatabaseService.executeQuery(
+        this.db,
+        'DELETE FROM suppliers WHERE id = ?',
+        [id]
+      );
+      
+      logger.info(`Fournisseur #${id} supprimé`);
+      return true;
+    } catch (error) {
+      logger.error(`Erreur lors de la suppression du fournisseur #${id}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Enregistrer une nouvelle transaction d'inventaire
+   */
+  public async recordInventoryTransaction(transaction: Omit<ServiceInventoryTransaction, 'id'>): Promise<ServiceInventoryTransaction> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      // Générer un ID unique pour la transaction
+      const id = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Insérer la transaction principale
+      await DatabaseService.executeQuery(
+        this.db,
+        `INSERT INTO inventory_transactions (
+          id, type, date, reference, status, notes, total_amount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          transaction.type,
+          transaction.date,
+          transaction.reference || null,
+          transaction.status,
+          transaction.notes || null,
+          transaction.totalAmount
+        ]
+      );
+      
+      // Insérer les éléments de la transaction
+      for (const item of transaction.items) {
+        await DatabaseService.executeQuery(
+          this.db,
+          `INSERT INTO inventory_transaction_items (
+            transaction_id, product_id, quantity, unit_price, total_price
+          ) VALUES (?, ?, ?, ?, ?)`,
+          [
+            id,
+            item.productId,
+            item.quantity,
+            item.unitPrice,
+            item.totalPrice
+          ]
+        );
+        
+        // Mettre à jour le stock du produit selon le type de transaction
+        let newQuantity = 0;
+        
+        // Récupérer le produit
+        const productId = typeof item.productId === 'string' ? parseInt(item.productId, 10) : item.productId;
+        const product = await this.getProductById(productId);
+        
+        if (product) {
+          switch (transaction.type) {
+            case 'purchase':
+              newQuantity = (product.quantity || 0) + item.quantity;
+              break;
+            case 'sale':
+              newQuantity = Math.max(0, (product.quantity || 0) - item.quantity);
+              break;
+            case 'adjustment':
+              // Pour les ajustements, la quantité est la nouvelle valeur absolue
+              newQuantity = item.quantity;
+              break;
+          }
+          
+          // Mettre à jour le stock
+          await this.updateStock(productId, newQuantity);
+          
+          // Mettre à jour ou créer un enregistrement de niveau de stock
+          const stockId = `stock-${productId}`;
+          const now = new Date().toISOString();
+          
+          // Vérifier si l'enregistrement existe déjà
+          const [stockResult] = await DatabaseService.executeQuery(
+            this.db,
+            'SELECT * FROM stock_levels WHERE product_id = ?',
+            [productId]
+          );
+          
+          if (stockResult.rows.length > 0) {
+            // Mettre à jour l'enregistrement existant
+            await DatabaseService.executeQuery(
+              this.db,
+              'UPDATE stock_levels SET quantity = ?, last_updated = ? WHERE product_id = ?',
+              [newQuantity, now, productId]
+            );
+          } else {
+            // Créer un nouvel enregistrement
+            await DatabaseService.executeQuery(
+              this.db,
+              'INSERT INTO stock_levels (id, product_id, quantity, location, last_updated) VALUES (?, ?, ?, ?, ?)',
+              [stockId, productId, newQuantity, 'default', now]
+            );
+          }
+        }
+      }
+      
+      logger.info(`Transaction d'inventaire ${id} enregistrée`);
+      
+      // Retourner la transaction complète
+      return {
+        ...transaction,
+        id
+      } as ServiceInventoryTransaction;
+    } catch (error) {
+      logger.error('Erreur lors de l\'enregistrement de la transaction d\'inventaire:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Obtenir toutes les transactions d'inventaire
+   */
+  public async getInventoryTransactions(): Promise<ServiceInventoryTransaction[]> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      // Récupérer toutes les transactions
+      const [transactionsResult] = await DatabaseService.executeQuery(
+        this.db,
+        'SELECT * FROM inventory_transactions ORDER BY date DESC'
+      );
+      
+      const transactions: ServiceInventoryTransaction[] = [];
+      
+      for (let i = 0; i < transactionsResult.rows.length; i++) {
+        const transaction = transactionsResult.rows.item(i);
+        
+        // Récupérer les éléments de la transaction
+        const [itemsResult] = await DatabaseService.executeQuery(
+          this.db,
+          'SELECT * FROM inventory_transaction_items WHERE transaction_id = ?',
+          [transaction.id]
+        );
+        
+        const items = [];
+        for (let j = 0; j < itemsResult.rows.length; j++) {
+          const item = itemsResult.rows.item(j);
+          items.push({
+            productId: item.product_id,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            totalPrice: item.total_price
+          });
+        }
+        
+        transactions.push({
+          id: transaction.id,
+          type: transaction.type as 'purchase' | 'sale' | 'adjustment',
+          date: transaction.date,
+          reference: transaction.reference,
+          items,
+          status: transaction.status as 'completed' | 'pending' | 'cancelled',
+          notes: transaction.notes,
+          totalAmount: transaction.total_amount
+        });
+      }
+      
+      return transactions;
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des transactions d\'inventaire:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Obtenir les niveaux de stock actuels
+   */
+  public async getStockLevels(): Promise<Stock[]> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        'SELECT * FROM stock_levels'
+      );
+      
+      const stockLevels: Stock[] = [];
+      for (let i = 0; i < result.rows.length; i++) {
+        const item = result.rows.item(i);
+        stockLevels.push({
+          id: item.id,
+          productId: item.product_id,
+          quantity: item.quantity,
+          location: item.location,
+          lastUpdated: item.last_updated
+        });
+      }
+      
+      return stockLevels;
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des niveaux de stock:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Obtenir le niveau de stock pour un produit spécifique
+   */
+  public async getStockByProductId(productId: string): Promise<Stock | null> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        'SELECT * FROM stock_levels WHERE product_id = ?',
+        [productId]
+      );
+      
+      if (result.rows.length === 0) {
+        // Si aucun enregistrement de stock n'existe, créer une valeur par défaut
+        return {
+          id: `stock-${productId}`,
+          productId,
+          quantity: 0,
+          location: 'default',
+          lastUpdated: new Date().toISOString()
+        };
+      }
+      
+      const item = result.rows.item(0);
+      return {
+        id: item.id,
+        productId: item.product_id,
+        quantity: item.quantity,
+        location: item.location,
+        lastUpdated: item.last_updated
+      };
+    } catch (error) {
+      logger.error(`Erreur lors de la récupération du stock pour le produit #${productId}:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Vérifier les produits avec un niveau de stock bas
+   */
+  public async checkLowStockItems(threshold?: number): Promise<ServiceProduct[]> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      // Si un seuil spécifique est fourni, l'utiliser, sinon utiliser le champ min_quantity
+      if (threshold !== undefined) {
+        const [result] = await DatabaseService.executeQuery(
+          this.db,
+          'SELECT * FROM products WHERE quantity <= ?',
+          [threshold]
+        );
+        
+        const products: ServiceProduct[] = [];
+        for (let i = 0; i < result.rows.length; i++) {
+          products.push(result.rows.item(i) as ServiceProduct);
+        }
+        
+        return products;
+      } else {
+        // Utiliser min_quantity comme seuil
+        const [result] = await DatabaseService.executeQuery(
+          this.db,
+          'SELECT * FROM products WHERE quantity <= min_quantity AND min_quantity IS NOT NULL'
+        );
+        
+        const products: ServiceProduct[] = [];
+        for (let i = 0; i < result.rows.length; i++) {
+          products.push(result.rows.item(i) as ServiceProduct);
+        }
+        
+        return products;
+      }
+    } catch (error) {
+      logger.error('Erreur lors de la vérification des produits avec un niveau de stock bas:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Calculer la valeur totale de l'inventaire
+   */
+  public async calculateInventoryValue(): Promise<number> {
+    if (!this.initialized) await this.init();
+    if (!this.db) throw new Error('Base de données non initialisée');
+    
+    try {
+      const [result] = await DatabaseService.executeQuery(
+        this.db,
+        'SELECT SUM(quantity * cost_price) as total_value FROM products WHERE cost_price IS NOT NULL'
+      );
+      
+      if (result.rows.length === 0) {
+        return 0;
+      }
+      
+      return result.rows.item(0).total_value || 0;
+    } catch (error) {
+      logger.error('Erreur lors du calcul de la valeur de l\'inventaire:', error);
+      throw error;
     }
   }
 
   /**
-   * Get stock levels for all products
+   * Vérifier si les données d'inventaire sont synchronisées
    */
-  async getStockLevels(): Promise<any[]> {
-    // Mock implementation that creates stock levels from products
-    const products = await this.getProducts();
-    
-    return products.map(product => ({
-      id: `stock-${product.id}`,
-      productId: product.id,
-      quantity: product.quantity,
-      location: product.location || 'default',
-      lastUpdated: new Date().toISOString()
-    }));
+  public async isInventorySynced(): Promise<boolean> {
+    return SyncService.isDataSynced('products');
   }
 
   /**
-   * Get stock for a specific product
+   * Forcer la synchronisation de l'inventaire
    */
-  async getStockByProductId(productId: string): Promise<any | null> {
-    const product = await this.getProductById(productId);
-    
-    if (!product) {
-      return null;
-    }
-    
-    return {
-      id: `stock-${productId}`,
-      productId: productId,
-      quantity: product.quantity,
-      location: product.location || 'default',
-      lastUpdated: new Date().toISOString()
-    };
-  }
-
-  /**
-   * Check for items with stock levels below threshold
-   */
-  async checkLowStockItems(threshold?: number): Promise<any[]> {
-    const products = await this.getProducts();
-    const defaultThreshold = 10; // Default threshold if not specified
-    
-    return products.filter(product => 
-      product.quantity <= (threshold !== undefined ? threshold : 
-        (product.reorderPoint || defaultThreshold))
-    );
-  }
-
-  /**
-   * Calculate total inventory value
-   */
-  async calculateInventoryValue(): Promise<number> {
-    const products = await this.getProducts();
-    
-    return products.reduce((total, product) => 
-      total + (product.quantity * product.cost), 0);
+  public async forceSyncInventory(): Promise<void> {
+    await SyncService.syncWithBackend();
   }
 }
 
-export default new InventoryService();
+// Exporter l'instance singleton
+const inventoryService = InventoryService.getInstance();
+export default inventoryService;

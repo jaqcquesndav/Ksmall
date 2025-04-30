@@ -3,34 +3,7 @@ import { useApi } from './useApi';
 import API from '../../services/API';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-
-/**
- * Type représentant une notification
- */
-export interface Notification {
-  id: string;
-  title: string;
-  body: string;
-  type: 'transaction' | 'system' | 'account' | 'promotion' | 'reminder' | 'alert';
-  read: boolean;
-  date: string;
-  data?: Record<string, any>;
-  actionUrl?: string;
-  actionText?: string;
-  image?: string;
-}
-
-/**
- * Options pour les requêtes de notifications
- */
-interface NotificationsQueryOptions {
-  limit?: number;
-  offset?: number;
-  read?: boolean;
-  type?: string;
-  startDate?: string;
-  endDate?: string;
-}
+import { Notification, NotificationFilters } from '../../types/notification';
 
 /**
  * Hook pour gérer les fonctionnalités de notification
@@ -39,7 +12,7 @@ export function useNotifications() {
   /**
    * Hook pour récupérer toutes les notifications
    */
-  const useAllNotifications = (options: NotificationsQueryOptions = {}) => {
+  const useAllNotifications = (options: NotificationFilters = {}) => {
     return useApi<Notification[]>(
       () => API.notifications.getNotifications(options),
       {

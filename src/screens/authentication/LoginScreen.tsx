@@ -11,11 +11,11 @@ import { TextInput, Button, Text, Title, useTheme, HelperText, Snackbar } from '
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
-import { useAuth as useAuthContext } from '../../context/AuthContext';
-import { useAuth } from '../../hooks/api/useAuth';
+import { useAuth } from '../../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetInfo } from '@react-native-community/netinfo';
 import * as LocalAuthentication from 'expo-local-authentication';
+import logger from '../../utils/logger';
 
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -25,32 +25,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const netInfo = useNetInfo();
   const isConnected = netInfo.isConnected;
   
-  // Context d'authentification (pour maintenir la compatibilité avec le reste de l'app)
-  const authContext = useAuthContext();
-  
-  // Hook d'authentification API avec fonctionnalités avancées
-  // Use try-catch to handle potential initialization errors
-  let auth;
-  try {
-    auth = useAuth();
-  } catch (error) {
-    console.error("Error initializing auth hook:", error);
-    // Fallback to a minimal auth object with default values
-    auth = {
-      login: { 
-        execute: async () => null,
-        isLoading: false,
-        error: null
-      },
-      // Other required properties with safe defaults
-      loading: false
-    };
-  }
-  
-  // Safe access to loginApi using optional chaining
-  const loginApi = auth?.login?.execute;
-  const isApiLoading = auth?.login?.isLoading || false;
-  const loginError = auth?.login?.error || null;
+  // Contexte d'authentification
+  const auth = useAuth();
   
   // États
   const [email, setEmail] = useState('');
@@ -90,7 +66,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           }
         }
       } catch (error) {
-        console.error('Erreur lors de la récupération des identifiants sauvegardés:', error);
+        logger.error('Erreur lors de la récupération des identifiants sauvegardés:', error);
       }
     };
     
@@ -106,7 +82,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     } else {
       setOfflineMode(false);
     }
-  }, [isConnected]);
+  }, [isConnected, t]);
 
   // Validation d'email simple
   const validateEmail = (email: string) => {
@@ -135,16 +111,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         setPassword(savedCredentials.password);
         
         // Connecter l'utilisateur avec les identifiants sauvegardés
-        if (offlineMode) {
-          // Utiliser directement le context d'authentification pour le mode hors ligne
-          authContext.login(savedCredentials.email, savedCredentials.password);
-        } else {
-          // En mode connecté, utiliser l'API
-          handleLogin(true);
-        }
+        handleLogin(true);
       }
     } catch (error) {
-      console.error('Erreur lors de l\'authentification biométrique:', error);
+      logger.error('Erreur lors de l\'authentification biométrique:', error);
       setSnackbarMessage(t('biometric_error'));
       setSnackbarVisible(true);
     }
@@ -155,7 +125,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     const loginEmail = isBiometric ? savedCredentials?.email || email : email;
     const loginPassword = isBiometric ? savedCredentials?.password || password : password;
     
-    console.log("🖱️ Login button pressed");
+    logger.info("🖱️ Login button pressed");
     
     // Reset des erreurs
     setErrors({});
@@ -178,84 +148,40 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     }
     
     if (!isValid) {
-      console.log("⚠️ Form validation failed:", newErrors);
+      logger.warn("⚠️ Form validation failed:", newErrors);
       setErrors(newErrors);
       return;
     }
     
-    // Connecter différemment selon le mode (connecté ou non)
     setLoading(true);
     
     try {
-      if (offlineMode) {
-        // En mode hors ligne, on vérifie si les identifiants correspondent à ceux enregistrés
-        if (savedCredentials && 
-            savedCredentials.email === loginEmail && 
-            savedCredentials.password === loginPassword) {
-          
-          // Utiliser le context d'authentification directement en mode hors ligne
-          await authContext.login(loginEmail, loginPassword);
-          console.log("✅ Offline login successful");
-          
-          // Afficher une notification de succès du mode hors ligne
-          setSnackbarMessage(t('offline_login_success'));
-          setSnackbarVisible(true);
-        } else {
-          throw new Error(t('offline_login_failed'));
-        }
-      } else {
-        // Check if loginApi function exists before calling it
-        if (!loginApi || typeof loginApi !== 'function') {
-          console.warn('API login function not available, falling back to direct auth');
-          // Fall back to direct authentication through context
-          await authContext.login(loginEmail, loginPassword);
-          
-          // Save credentials for offline use
-          await AsyncStorage.setItem('saved_credentials', JSON.stringify({
-            email: loginEmail,
-            password: loginPassword
-          }));
-          
-          console.log("✅ Direct login successful (API unavailable)");
-        } else {
-          // En mode connecté, utiliser notre hook API
-          const response = await loginApi(loginEmail, loginPassword);
-          
-          // Handle null response (API not available)
-          if (response === null) {
-            // Fall back to direct authentication
-            await authContext.login(loginEmail, loginPassword);
-            console.log("✅ Fallback to direct login (API returned null)");
-          }
-          // Si la connexion réussit, mettre à jour le context d'authentification
-          else if (response && response.user && response.token) {
-            authContext.login(loginEmail, loginPassword);
-            
-            // Sauvegarder les identifiants pour une utilisation hors ligne
-            await AsyncStorage.setItem('saved_credentials', JSON.stringify({
-              email: loginEmail,
-              password: loginPassword
-            }));
-            
-            console.log("✅ Online login successful");
-          } else {
-            throw new Error(t('invalid_credentials'));
-          }
-        }
-      }
-    } catch (error: any) {
-      console.error("❌ Login error:", error);
+      // Connexion avec Auth0 via notre contexte d'authentification
+      await auth.login(loginEmail, loginPassword);
       
-      // Special case for demo account
+      // Sauvegarder les identifiants pour une utilisation hors ligne
+      if (!isBiometric) {
+        await AsyncStorage.setItem('saved_credentials', JSON.stringify({
+          email: loginEmail,
+          password: loginPassword
+        }));
+      }
+      
+      // Si nous arrivons ici, la connexion a réussi
+      logger.info("✅ Login successful");
+    } catch (error: any) {
+      logger.error("❌ Login error:", error);
+      
+      // Cas spécial pour le compte de démonstration
       if (loginEmail === 'jacquesndav@gmail.com' && loginPassword === 'root12345') {
         try {
-          // Try demo login directly
-          await authContext.demoLogin();
-          console.log("✅ Demo login successful");
+          // Essayer la connexion démo directement
+          await auth.demoLogin();
+          logger.info("✅ Demo login successful");
           return;
         } catch (demoError) {
-          console.error("Demo login failed:", demoError);
-          // Continue to regular error handling
+          logger.error("Demo login failed:", demoError);
+          // Continuer avec la gestion normale des erreurs
         }
       }
       
@@ -289,10 +215,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       setSnackbarVisible(true);
       return;
     }
-    navigation.navigate("Register");
+    navigation.navigate('Register');
   };
 
-  // Handle Google login
+  // Gestion de la connexion Google
   const handleGoogleLogin = async () => {
     if (offlineMode) {
       setSnackbarMessage(t('feature_unavailable_offline'));
@@ -302,10 +228,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await authContext.loginWithGoogle();
-      console.log("✅ Google login successful");
+      await auth.loginWithGoogle();
+      logger.info("✅ Google login successful");
     } catch (error: any) {
-      console.error("❌ Google login error:", error);
+      logger.error("❌ Google login error:", error);
       Alert.alert(
         t('login_failed'),
         error?.message || t('google_login_failed'),
@@ -316,7 +242,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     }
   };
 
-  // Handle Facebook login
+  // Gestion de la connexion Facebook
   const handleFacebookLogin = async () => {
     if (offlineMode) {
       setSnackbarMessage(t('feature_unavailable_offline'));
@@ -326,10 +252,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await authContext.loginWithFacebook();
-      console.log("✅ Facebook login successful");
+      await auth.loginWithFacebook();
+      logger.info("✅ Facebook login successful");
     } catch (error: any) {
-      console.error("❌ Facebook login error:", error);
+      logger.error("❌ Facebook login error:", error);
       Alert.alert(
         t('login_failed'),
         error?.message || t('facebook_login_failed'),
@@ -422,8 +348,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           mode="contained"
           onPress={() => handleLogin(false)}
           style={styles.loginButton}
-          loading={loading}
-          disabled={loading}
+          loading={loading || auth.loading}
+          disabled={loading || auth.loading}
         >
           {t('login')}
         </Button>
@@ -435,7 +361,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             icon="fingerprint"
             onPress={authenticateWithBiometrics}
             style={styles.biometricButton}
-            disabled={loading}
+            disabled={loading || auth.loading}
           >
             {t('login_with_biometrics')}
           </Button>
@@ -453,7 +379,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           icon="google"
           onPress={handleGoogleLogin}
           style={styles.socialButton}
-          disabled={offlineMode || loading}
+          disabled={offlineMode || loading || auth.loading}
           labelStyle={styles.socialButtonText}
         >
           {t('login_with_google')}
@@ -464,7 +390,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           icon="facebook"
           onPress={handleFacebookLogin}
           style={[styles.socialButton, styles.facebookButton]}
-          disabled={offlineMode || loading}
+          disabled={offlineMode || loading || auth.loading}
           labelStyle={[styles.socialButtonText, styles.facebookButtonText]}
         >
           {t('login_with_facebook')}
@@ -478,7 +404,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             mode="text"
             onPress={handleSignup}
             style={styles.signupButton}
-            disabled={offlineMode || loading}
+            disabled={offlineMode || loading || auth.loading}
           >
             {t('sign_up')}
           </Button>

@@ -1,118 +1,25 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import InventoryService from '../services/InventoryService';
 import DatabaseService from '../services/DatabaseService';
-import { Product, Supplier, Stock } from '../types/inventory';
+import { 
+  Product, 
+  Supplier, 
+  Stock, 
+  InventoryTransaction, 
+  ServiceInventoryTransaction,
+  ServiceProduct,
+  ServiceSupplier
+} from '../types/inventory';
 import logger from '../utils/logger';
-
-// Define InventoryTransaction type since it wasn't found in inventory.ts
-interface InventoryTransaction {
-  id: string;
-  type: 'purchase' | 'sale' | 'adjustment'; // Removed 'transfer' to match with service definition
-  date: string;
-  productId: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  reference?: string;
-  notes?: string;
-  createdBy: string;
-  createdAt: string;
-}
-
-// Define adapter functions to convert between different types
-const adapters = {
-  // Convert InventoryItem to Product
-  inventoryItemToProduct(item: import('../services/InventoryService').InventoryItem): Product {
-    return {
-      id: item.id,
-      name: item.name,
-      sku: item.sku,
-      description: item.description || '',
-      price: item.price,
-      costPrice: item.cost,
-      quantity: item.quantity,
-      category: item.category,
-      imageUrl: item.imageUrl,
-      barcode: item.sku,
-      location: item.location,
-      supplier: item.supplier,
-      minStockLevel: item.reorderPoint,
-      isActive: true,
-      attributes: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-  },
-  
-  // Convert Product to InventoryItem with default values for required properties
-  productToInventoryItem(product: Product): Omit<import('../services/InventoryService').InventoryItem, 'id'> {
-    return {
-      name: product.name,
-      sku: product.sku || '',
-      description: product.description || '',
-      price: product.price,
-      cost: product.costPrice,
-      quantity: product.quantity || 0,
-      category: product.category || 'default',
-      subcategory: '', // Use empty string since Product doesn't have subcategory
-      reorderPoint: product.minStockLevel || 0,
-      supplier: product.supplier || '',
-      location: product.location || 'default',
-      imageUrl: product.imageUrl
-    };
-  },
-  
-  // Convert service Supplier to domain Supplier
-  serviceSupplierToDomainSupplier(supplier: import('../services/InventoryService').Supplier): Supplier {
-    return {
-      id: supplier.id,
-      name: supplier.name,
-      contactPerson: supplier.contactPerson,
-      email: supplier.email,
-      phone: supplier.phone,
-      address: supplier.address || '',
-      city: '',
-      country: '',
-      notes: supplier.notes,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  },
-  
-  // Convert domain Supplier to service Supplier
-  domainSupplierToServiceSupplier(supplier: Supplier): import('../services/InventoryService').Supplier {
-    return {
-      id: supplier.id,
-      name: supplier.name,
-      contactPerson: supplier.contactPerson,
-      email: supplier.email,
-      phone: supplier.phone,
-      address: supplier.address,
-      paymentTerms: '',
-      notes: supplier.notes,
-      productCategories: []
-    };
-  },
-  
-  // Create mock implementations for missing methods
-  mockStockLevel(productId: string): Stock {
-    return {
-      id: `stock-${productId}`,
-      productId,
-      quantity: 0,
-      location: 'default',
-      lastUpdated: new Date().toISOString()
-    };
-  },
-  
-  createMockInventoryTransaction(data: Omit<InventoryTransaction, 'id'>): InventoryTransaction {
-    return {
-      id: `tx-${Date.now()}`,
-      ...data
-    };
-  }
-};
+import {
+  serviceProductToDomainProduct,
+  domainProductToServiceProduct,
+  serviceSupplierToDomainSupplier,
+  domainSupplierToServiceSupplier,
+  serviceTransactionToDomainTransaction,
+  domainTransactionToServiceTransaction,
+  createMockStockLevel
+} from '../utils/adapters/inventoryAdapters';
 
 // Définition du type pour le contexte d'inventaire
 interface InventoryContextType {
@@ -166,7 +73,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Use the InventoryService singleton directly instead of trying to instantiate it
+  // Use the InventoryService singleton directly
   const inventoryService = InventoryService;
   
   // Charger les données d'inventaire au démarrage
@@ -188,27 +95,17 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
       ]);
       
       // Convert each data type using appropriate adapters
-      const convertedProducts = productsList.map(item => adapters.inventoryItemToProduct(item));
+      const convertedProducts = productsList.map(item => 
+        serviceProductToDomainProduct(item as ServiceProduct));
+      
       const convertedSuppliers = suppliersList.map(supplier => 
-        adapters.serviceSupplierToDomainSupplier(supplier)
+        serviceSupplierToDomainSupplier(supplier as ServiceSupplier)
       );
       
-      // For transactions, we need to create a proper domain transaction from service transaction
-      const convertedTransactions = transactionsList.map(transaction => {
-        return {
-          id: transaction.id,
-          type: transaction.type,
-          date: transaction.date,
-          productId: transaction.items[0]?.productId || '',
-          quantity: transaction.items[0]?.quantity || 0,
-          unitPrice: transaction.items[0]?.unitPrice || 0,
-          totalPrice: transaction.items[0]?.totalPrice || 0,
-          reference: transaction.reference,
-          notes: transaction.notes,
-          createdBy: 'system',
-          createdAt: transaction.date
-        } as InventoryTransaction;
-      });
+      // Convert transactions using the adapter
+      const convertedTransactions = transactionsList.map(transaction => 
+        serviceTransactionToDomainTransaction(transaction as ServiceInventoryTransaction)
+      );
       
       setProducts(convertedProducts);
       setSuppliers(convertedSuppliers);
@@ -227,8 +124,10 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const getProducts = async () => {
     try {
       const productsList = await inventoryService.getProducts();
-      // Convert InventoryItems to Products using the adapter
-      const convertedProducts = productsList.map(item => adapters.inventoryItemToProduct(item));
+      // Convert using adapter
+      const convertedProducts = productsList.map(item => 
+        serviceProductToDomainProduct(item as ServiceProduct)
+      );
       setProducts(convertedProducts);
       return convertedProducts;
     } catch (err) {
@@ -243,7 +142,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       const product = await inventoryService.getProductById(id);
       if (product) {
-        return adapters.inventoryItemToProduct(product);
+        return serviceProductToDomainProduct(product as ServiceProduct);
       }
       return null;
     } catch (err) {
@@ -256,14 +155,15 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   const addProduct = async (product: Omit<Product, 'id'>) => {
     try {
-      // Convert the product to InventoryItem format
-      const productAsInventoryItem = adapters.productToInventoryItem(product as Product);
+      // Convert the product to service format using adapter
+      const productAsServiceProduct = domainProductToServiceProduct(product as Product);
       
-      // Call the service method (no need to remove id since it's already omitted)
-      const newInventoryItem = await inventoryService.addProduct(productAsInventoryItem);
+      // Call the service method
+      const newServiceProduct = await inventoryService.addProduct(productAsServiceProduct);
       
-      // Convert back to Product format
-      const newProduct = adapters.inventoryItemToProduct(newInventoryItem);
+      // Convert back to domain format
+      const newProduct = serviceProductToDomainProduct(newServiceProduct);
+      
       // Update state
       setProducts([...products, newProduct]);
       return newProduct;
@@ -277,12 +177,15 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   const updateProduct = async (id: string, updates: Partial<Product>) => {
     try {
-      // Convert product updates to InventoryItem format
-      const inventoryItemUpdates = adapters.productToInventoryItem({...updates, id} as Product);
+      // Convert product updates to service format using adapter
+      const serviceUpdates = domainProductToServiceProduct({...updates, id} as Product);
+      
       // Call the service method
-      const updatedInventoryItem = await inventoryService.updateProduct(id, inventoryItemUpdates);
-      // Convert back to Product format
-      const updatedProduct = adapters.inventoryItemToProduct(updatedInventoryItem);
+      const updatedServiceProduct = await inventoryService.updateProduct(id, serviceUpdates);
+      
+      // Convert back to domain format
+      const updatedProduct = serviceProductToDomainProduct(updatedServiceProduct);
+      
       // Update state
       setProducts(products.map(p => p.id === id ? updatedProduct : p));
       return updatedProduct;
@@ -313,9 +216,9 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const getSuppliers = async () => {
     try {
       const serviceSuppliers = await inventoryService.getSuppliers();
-      // Convert service suppliers to domain suppliers
+      // Convert service suppliers to domain suppliers using adapter
       const domainSuppliers = serviceSuppliers.map(supplier => 
-        adapters.serviceSupplierToDomainSupplier(supplier)
+        serviceSupplierToDomainSupplier(supplier as ServiceSupplier)
       );
       setSuppliers(domainSuppliers);
       return domainSuppliers;
@@ -332,8 +235,8 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
       const serviceSupplier = await inventoryService.getSupplierById(id);
       if (!serviceSupplier) return null;
       
-      // Convert service supplier to domain supplier
-      return adapters.serviceSupplierToDomainSupplier(serviceSupplier);
+      // Convert service supplier to domain supplier using adapter
+      return serviceSupplierToDomainSupplier(serviceSupplier as ServiceSupplier);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : `Erreur lors de la récupération du fournisseur ${id}`;
       setError(errorMessage);
@@ -344,20 +247,20 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   const addSupplier = async (supplier: Omit<Supplier, 'id'>) => {
     try {
-      // Create a complete supplier with an ID for the adapter
+      // Create a complete supplier with a temporary ID for the adapter
       const fullSupplier = {
         ...supplier,
         id: `temp-${Date.now()}` // Temporary ID that will be replaced
       };
       
-      // Convert from domain to service supplier format
-      const serviceSupplier = adapters.domainSupplierToServiceSupplier(fullSupplier);
+      // Convert from domain to service supplier format using adapter
+      const serviceSupplier = domainSupplierToServiceSupplier(fullSupplier);
       
       // Call the service method
       const newServiceSupplier = await inventoryService.addSupplier(serviceSupplier);
       
-      // Convert back to domain supplier format
-      const newDomainSupplier = adapters.serviceSupplierToDomainSupplier(newServiceSupplier);
+      // Convert back to domain supplier format using adapter
+      const newDomainSupplier = serviceSupplierToDomainSupplier(newServiceSupplier as ServiceSupplier);
       
       // Update state
       setSuppliers([...suppliers, newDomainSupplier]);
@@ -372,15 +275,15 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
     try {
-      // Convert the supplier updates to service format
+      // Find existing supplier
       const existingSupplier = suppliers.find(s => s.id === id);
       
       if (!existingSupplier) {
         throw new Error(`Fournisseur avec l'ID ${id} introuvable`);
       }
       
-      // Prepare service-compatible updates
-      const serviceUpdates = adapters.domainSupplierToServiceSupplier({
+      // Prepare service-compatible updates using adapter
+      const serviceUpdates = domainSupplierToServiceSupplier({
         ...existingSupplier,
         ...updates
       });
@@ -388,8 +291,8 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
       // Call the service method
       const updatedServiceSupplier = await inventoryService.updateSupplier(id, serviceUpdates);
       
-      // Convert back to domain format
-      const updatedDomainSupplier = adapters.serviceSupplierToDomainSupplier(updatedServiceSupplier);
+      // Convert back to domain format using adapter
+      const updatedDomainSupplier = serviceSupplierToDomainSupplier(updatedServiceSupplier as ServiceSupplier);
       
       // Update state
       setSuppliers(suppliers.map(s => s.id === id ? updatedDomainSupplier : s));
@@ -420,40 +323,18 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Méthodes pour les transactions d'inventaire
   const recordInventoryTransaction = async (transaction: Omit<InventoryTransaction, 'id'>) => {
     try {
-      // Convert from domain transaction to service transaction format
-      const serviceTransaction = {
-        id: `temp-${Date.now()}`, // Will be replaced by the service
-        type: transaction.type,
-        date: transaction.date,
-        reference: transaction.reference || `TX-${Date.now()}`,
-        items: [{
-          productId: transaction.productId,
-          quantity: transaction.quantity,
-          unitPrice: transaction.unitPrice,
-          totalPrice: transaction.totalPrice
-        }],
-        status: 'completed' as 'completed' | 'pending' | 'cancelled', // Forcer le typage explicite
-        notes: transaction.notes,
-        totalAmount: transaction.totalPrice
-      };
+      // Convert from domain transaction to service transaction format using adapter
+      const serviceTransaction = domainTransactionToServiceTransaction(transaction);
       
       // Call the service method
-      const newServiceTransaction = await inventoryService.recordInventoryTransaction(serviceTransaction);
+      const newServiceTransaction = await inventoryService.recordInventoryTransaction(
+        serviceTransaction as ServiceInventoryTransaction
+      );
       
-      // Convert back to domain format
-      const newDomainTransaction: InventoryTransaction = {
-        id: newServiceTransaction.id,
-        type: newServiceTransaction.type,
-        date: newServiceTransaction.date,
-        productId: newServiceTransaction.items[0]?.productId || '',
-        quantity: newServiceTransaction.items[0]?.quantity || 0,
-        unitPrice: newServiceTransaction.items[0]?.unitPrice || 0,
-        totalPrice: newServiceTransaction.items[0]?.totalPrice || 0,
-        reference: newServiceTransaction.reference,
-        notes: newServiceTransaction.notes,
-        createdBy: 'system',
-        createdAt: newServiceTransaction.date
-      };
+      // Convert back to domain format using adapter
+      const newDomainTransaction = serviceTransactionToDomainTransaction(
+        newServiceTransaction as ServiceInventoryTransaction
+      );
       
       // Update state
       setTransactions([...transactions, newDomainTransaction]);
@@ -473,22 +354,10 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       const serviceTransactions = await inventoryService.getInventoryTransactions();
       
-      // Convert service transactions to domain transactions
-      const domainTransactions = serviceTransactions.map(transaction => {
-        return {
-          id: transaction.id,
-          type: transaction.type,
-          date: transaction.date,
-          productId: transaction.items[0]?.productId || '',
-          quantity: transaction.items[0]?.quantity || 0,
-          unitPrice: transaction.items[0]?.unitPrice || 0,
-          totalPrice: transaction.items[0]?.totalPrice || 0,
-          reference: transaction.reference,
-          notes: transaction.notes,
-          createdBy: 'system',
-          createdAt: transaction.date
-        } as InventoryTransaction;
-      });
+      // Convert service transactions to domain transactions using adapter
+      const domainTransactions = serviceTransactions.map(transaction => 
+        serviceTransactionToDomainTransaction(transaction as ServiceInventoryTransaction)
+      );
       
       setTransactions(domainTransactions);
       return domainTransactions;
@@ -528,7 +397,9 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Méthodes de gestion de l'inventaire
   const checkLowStockItems = async (threshold?: number) => {
     try {
-      return await inventoryService.checkLowStockItems(threshold);
+      const serviceProducts = await inventoryService.checkLowStockItems(threshold);
+      // Convert products to domain format
+      return serviceProducts.map(product => serviceProductToDomainProduct(product as ServiceProduct));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur lors de la vérification des produits en rupture de stock';
       setError(errorMessage);

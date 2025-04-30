@@ -9,26 +9,7 @@ import { formatNumber } from '../../utils/formatters';
 import { useNavigation } from '@react-navigation/native';
 import { useCurrency } from '../../hooks/useCurrency';
 import CurrencyAmount from '../common/CurrencyAmount';
-
-interface SubscriptionStatusWidgetProps {
-  subscriptionData?: {
-    plan: string;
-    expiryDate: Date;
-    isActive: boolean;
-    features?: string[];
-    tokens: {
-      total: number;
-      used: number;
-      remaining: number;
-      bonusDate: Date;
-      bonusAmount: number;
-    };
-  };
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
-  isLandscape?: boolean;
-  style?: any; // Ajout de la propriété style
-}
+import { SubscriptionData, SubscriptionStatusWidgetProps } from '../../types/dashboard';
 
 const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({ 
   subscriptionData,
@@ -47,7 +28,7 @@ const SubscriptionStatusWidget: React.FC<SubscriptionStatusWidgetProps> = ({
   const collapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
   
   // Mock data for when subscriptionData is not provided
-  const defaultSubscriptionData = {
+  const defaultSubscriptionData: SubscriptionData = {
     plan: "Plan Standard",
     expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
     isActive: true,

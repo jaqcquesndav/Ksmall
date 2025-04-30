@@ -11,22 +11,40 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kiota.ksmall"
+      "bundleIdentifier": "com.kiota.ksmall",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleTypeRole": "None",
+            "CFBundleURLName": "auth0",
+            "CFBundleURLSchemes": [
+              "ksmall"
+            ]
+          }
+        ]
+      }
     },
     "android": {
       "package": "com.kiota.ksmall",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
-      }
-    },
-    "plugins": [
-      [
-        "expo-secure-store",
+      },
+      "intentFilters": [
         {
-          "faceIDPermission": "Allow KSMall to access your secure credentials"
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": {
+            "scheme": "ksmall",
+            "pathPrefix": "/auth0/callback"
+          }
         }
       ]
-    ],
+    },
+    "plugins": [],
     "web": {
       "favicon": "./assets/favicon.png"
     }

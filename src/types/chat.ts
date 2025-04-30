@@ -14,6 +14,19 @@ export enum CHAT_MODES {
 }
 
 /**
+ * Types de messages dans l'interface utilisateur
+ */
+export enum MESSAGE_TYPES {
+  REGULAR_CHAT = 'regular_chat',
+  JOURNAL_ENTRY = 'journal_entry',
+  INVENTORY = 'inventory',
+  ANALYSIS = 'analysis',
+  MARKDOWN = 'markdown',
+  LATEX = 'latex',
+  CODE = 'code'
+}
+
+/**
  * Interface représentant une conversation
  */
 export interface Conversation {
@@ -27,7 +40,7 @@ export interface Conversation {
 }
 
 /**
- * Interface représentant un message dans une conversation
+ * Interface représentant un message dans une conversation (API)
  */
 export interface Message {
   id: string;
@@ -42,6 +55,48 @@ export interface Message {
   suggestions?: Suggestion[];
   createdAt: string;
   metadata?: Record<string, any>;
+}
+
+/**
+ * Interface représentant un message dans l'interface utilisateur
+ */
+export interface UIMessage {
+  id: string;
+  content: string;
+  messageType: MESSAGE_TYPES;
+  isUser: boolean;
+  timestamp: string;
+  attachments?: MessageAttachment[];
+  status?: 'pending' | 'validated' | 'error';
+  journalData?: any;
+  inventoryData?: any;
+  analysisData?: any;
+  codeLanguage?: string;
+  userReaction?: 'like' | 'dislike' | null;
+  isSystemMessage?: boolean;
+}
+
+/**
+ * Interface pour les pièces jointes dans l'interface utilisateur
+ */
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+}
+
+/**
+ * Données pour le widget d'inventaire
+ */
+export interface InventoryData {
+  items: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalValue: number;
 }
 
 /**
@@ -137,4 +192,33 @@ export interface ValidateSuggestionResult {
   journalEntryId?: string;
   inventoryId?: string;
   message?: string;
+}
+
+/**
+ * Types pour les services du chat
+ */
+
+export interface ServiceConversation {
+  id: string;
+  title: string;
+  mode: string;
+  messages: ServiceMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceMessage {
+  id: string;
+  text: string;
+  role: string;
+  metadata: Record<string, any>;
+  attachments: ServiceAttachment[];
+  createdAt: string;
+}
+
+export interface ServiceAttachment {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
 }

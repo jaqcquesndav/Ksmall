@@ -90,6 +90,78 @@ export interface Supplier {
 }
 
 /**
+ * Type représentant une transaction d'inventaire
+ */
+export interface InventoryTransaction {
+  id: string;
+  type: 'purchase' | 'sale' | 'adjustment';
+  date: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  reference?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/**
+ * Type représentant une transaction d'inventaire dans le service
+ */
+export interface ServiceInventoryTransaction {
+  id: string;
+  type: 'purchase' | 'sale' | 'adjustment';
+  date: string;
+  reference?: string;
+  items: {
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }[];
+  status: 'completed' | 'pending' | 'cancelled';
+  notes?: string;
+  totalAmount: number;
+}
+
+/**
+ * Type représentant un produit dans le service
+ */
+export interface ServiceProduct {
+  id?: number;
+  product_code: string;
+  name: string;
+  description?: string;
+  category_id: number;
+  price: number;
+  cost_price?: number;
+  quantity: number;
+  min_quantity?: number;
+  unit_id?: number;
+  tax_id?: number;
+  images?: string;
+  created_at?: string;
+  updated_at?: string;
+  sync_status?: string;
+}
+
+/**
+ * Type représentant un fournisseur dans le service
+ */
+export interface ServiceSupplier {
+  id?: string;
+  name: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  address?: string;
+  paymentTerms: string;
+  notes?: string;
+  productCategories: string[];
+}
+
+/**
  * Type représentant une commande d'achat
  */
 export interface PurchaseOrder {

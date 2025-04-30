@@ -1,17 +1,5 @@
 import { useCallback } from 'react';
-
-/**
- * Types for notifications
- */
-export interface NotificationOptions {
-  type: 'success' | 'error' | 'warning' | 'info';
-  message: string;
-  description?: string;
-  duration?: number;
-  position?: 'top' | 'bottom';
-  onPress?: () => void;
-  onClose?: () => void;
-}
+import { NotificationOptions } from '../types/notification';
 
 /**
  * Hook for displaying notifications to the user

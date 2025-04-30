@@ -1,84 +1,13 @@
 import { useCallback } from 'react';
 import { useApi } from './useApi';
 import API from '../../services/API';
-
-/**
- * Type pour la disposition d'un tableau de bord
- */
-export interface DashboardLayout {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  widgets: DashboardWidget[];
-  createdAt: string;
-  updatedAt: string;
-  userId: string;
-}
-
-/**
- * Type pour un widget du tableau de bord
- */
-export interface DashboardWidget {
-  id: string;
-  type: 'chart' | 'metric' | 'list' | 'table' | 'alert' | 'summary';
-  title: string;
-  size: 'small' | 'medium' | 'large' | 'full';
-  position: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  };
-  config: {
-    dataSource: string;
-    chartType?: 'line' | 'bar' | 'pie' | 'area' | 'radar' | 'scatter';
-    timeRange?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
-    filters?: Record<string, any>;
-    [key: string]: any;
-  };
-}
-
-/**
- * Type pour les métriques
- */
-export interface DashboardMetric {
-  key: string;
-  label: string;
-  value: number;
-  unit?: string;
-  previousValue?: number;
-  trend?: number;
-  formatter?: string;
-  status?: 'positive' | 'negative' | 'neutral';
-}
-
-/**
- * Type pour les alertes du tableau de bord
- */
-export interface DashboardAlert {
-  id: string;
-  type: 'warning' | 'info' | 'critical' | 'success';
-  title: string;
-  message: string;
-  date: string;
-  isRead: boolean;
-  link?: string;
-  actionText?: string;
-}
-
-/**
- * Options pour les requêtes du tableau de bord
- */
-interface DashboardQueryOptions {
-  startDate?: string;
-  endDate?: string;
-  granularity?: 'day' | 'week' | 'month' | 'quarter' | 'year';
-  includeComparison?: boolean;
-  comparisonPeriod?: 'previous_period' | 'previous_year' | 'custom';
-  comparisonStartDate?: string;
-  comparisonEndDate?: string;
-  filters?: Record<string, any>;
-}
+import { 
+  DashboardLayout, 
+  DashboardWidget, 
+  DashboardMetric, 
+  DashboardAlert,
+  DashboardQueryOptions
+} from '../../types/dashboard';
 
 /**
  * Hook pour gérer les fonctionnalités du tableau de bord

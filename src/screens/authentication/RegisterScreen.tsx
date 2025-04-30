@@ -13,6 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import { useNetInfo } from '@react-native-community/netinfo';
+import logger from '../../utils/logger';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
@@ -22,8 +23,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
   const netInfo = useNetInfo();
   const isConnected = netInfo.isConnected;
   
-  // Context d'authentification
-  const { register, registerWithGoogle, registerWithFacebook, loading: authLoading } = useAuth();
+  // Contexte d'authentification
+  const auth = useAuth();
   
   // États
   const [email, setEmail] = useState('');
@@ -52,87 +53,81 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     } else {
       setOfflineMode(false);
     }
-  }, [isConnected]);
+  }, [isConnected, t]);
 
-  // Validation d'email simple
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  // Validation
+  const validateForm = () => {
+    const newErrors: {
+      email?: string;
+      password?: string;
+      confirmPassword?: string;
+      displayName?: string;
+    } = {};
+    let isValid = true;
+
+    // Validation email
+    if (!email) {
+      newErrors.email = t('email_required');
+      isValid = false;
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        newErrors.email = t('invalid_email');
+        isValid = false;
+      }
+    }
+
+    // Validation du nom d'affichage
+    if (!displayName) {
+      newErrors.displayName = t('name_required');
+      isValid = false;
+    }
+
+    // Validation du mot de passe
+    if (!password) {
+      newErrors.password = t('password_required');
+      isValid = false;
+    } else if (password.length < 6) {
+      newErrors.password = t('password_too_short');
+      isValid = false;
+    }
+
+    // Validation de la confirmation du mot de passe
+    if (password !== confirmPassword) {
+      newErrors.confirmPassword = t('passwords_dont_match');
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
   };
 
+  // Gérer l'inscription
   const handleRegister = async () => {
     if (offlineMode) {
       setSnackbarMessage(t('feature_unavailable_offline'));
       setSnackbarVisible(true);
       return;
     }
-    
-    console.log("🖱️ Register button pressed");
-    
-    // Reset des erreurs
-    setErrors({});
-    
-    // Validation
-    let isValid = true;
-    const newErrors: {
-      email?: string; 
-      password?: string;
-      confirmPassword?: string;
-      displayName?: string;
-    } = {};
-    
-    if (!email) {
-      newErrors.email = t('email_required');
-      isValid = false;
-    } else if (!validateEmail(email)) {
-      newErrors.email = t('invalid_email');
-      isValid = false;
-    }
-    
-    if (!password) {
-      newErrors.password = t('password_required');
-      isValid = false;
-    } else if (password.length < 8) {
-      newErrors.password = t('password_too_short');
-      isValid = false;
-    }
-    
-    if (!confirmPassword) {
-      newErrors.confirmPassword = t('confirm_password_required');
-      isValid = false;
-    } else if (password !== confirmPassword) {
-      newErrors.confirmPassword = t('passwords_dont_match');
-      isValid = false;
-    }
-    
-    if (!displayName) {
-      newErrors.displayName = t('display_name_required');
-      isValid = false;
-    }
-    
-    if (!isValid) {
-      console.log("⚠️ Form validation failed:", newErrors);
-      setErrors(newErrors);
+
+    if (!validateForm()) {
       return;
     }
-    
+
     setLoading(true);
-    
     try {
-      await register(email, password, displayName);
-      console.log("✅ Registration successful");
+      // Utiliser le service Auth0 via le contexte d'authentification
+      await auth.register(email, password, displayName);
       
-      // Afficher un message de succès
+      logger.info("✅ Registration successful");
+      
       Alert.alert(
-        t('registration_successful'),
+        t('registration_success'),
         t('registration_success_message'),
-        [{ text: t('ok') }]
+        [{ text: t('ok'), onPress: () => navigation.navigate('Login') }]
       );
-      
-      // Rediriger vers la page de connexion
-      navigation.navigate('Login');
     } catch (error: any) {
-      console.error("❌ Registration error:", error);
+      logger.error("❌ Registration error:", error);
       
       Alert.alert(
         t('registration_failed'),
@@ -144,7 +139,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     }
   };
 
-  // Handle Google registration
+  // Gérer l'inscription avec Google
   const handleGoogleRegistration = async () => {
     if (offlineMode) {
       setSnackbarMessage(t('feature_unavailable_offline'));
@@ -154,10 +149,10 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await registerWithGoogle();
-      console.log("✅ Google registration successful");
+      await auth.registerWithGoogle();
+      logger.info("✅ Google registration successful");
     } catch (error: any) {
-      console.error("❌ Google registration error:", error);
+      logger.error("❌ Google registration error:", error);
       Alert.alert(
         t('registration_failed'),
         error?.message || t('google_registration_failed'),
@@ -168,7 +163,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     }
   };
 
-  // Handle Facebook registration
+  // Gérer l'inscription avec Facebook
   const handleFacebookRegistration = async () => {
     if (offlineMode) {
       setSnackbarMessage(t('feature_unavailable_offline'));
@@ -178,10 +173,10 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await registerWithFacebook();
-      console.log("✅ Facebook registration successful");
+      await auth.registerWithFacebook();
+      logger.info("✅ Facebook registration successful");
     } catch (error: any) {
-      console.error("❌ Facebook registration error:", error);
+      logger.error("❌ Facebook registration error:", error);
       Alert.alert(
         t('registration_failed'),
         error?.message || t('facebook_registration_failed'),
@@ -294,8 +289,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
           mode="contained"
           onPress={handleRegister}
           style={styles.registerButton}
-          loading={loading}
-          disabled={loading || offlineMode}
+          loading={loading || auth.loading}
+          disabled={loading || offlineMode || auth.loading}
         >
           {t('register')}
         </Button>
@@ -306,13 +301,13 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
           <View style={styles.line} />
         </View>
 
-        {/* Social Registration Buttons */}
+        {/* Boutons d'inscription sociale */}
         <Button
           mode="outlined"
           icon="google"
           onPress={handleGoogleRegistration}
           style={styles.socialButton}
-          disabled={offlineMode || loading}
+          disabled={offlineMode || loading || auth.loading}
           labelStyle={styles.socialButtonText}
         >
           {t('register_with_google')}
@@ -323,7 +318,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
           icon="facebook"
           onPress={handleFacebookRegistration}
           style={[styles.socialButton, styles.facebookButton]}
-          disabled={offlineMode || loading}
+          disabled={offlineMode || loading || auth.loading}
           labelStyle={[styles.socialButtonText, styles.facebookButtonText]}
         >
           {t('register_with_facebook')}
@@ -367,29 +362,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 24,
-    paddingTop: 40,
-    alignItems: 'center',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 32,
-    alignSelf: 'center',
+    marginBottom: 24,
+    textAlign: 'center',
   },
   input: {
-    width: '100%',
     marginBottom: 16,
-    backgroundColor: 'transparent',
   },
   registerButton: {
-    width: '100%',
     marginTop: 16,
     paddingVertical: 8,
   },
   separator: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
     marginVertical: 24,
   },
   line: {
@@ -403,6 +392,7 @@ const styles = StyleSheet.create({
   },
   loginContainer: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 24,
   },

@@ -1,7 +1,17 @@
-import { DefaultTheme, MD3DarkTheme } from 'react-native-paper';
+import { DefaultTheme, MD3DarkTheme, MD3Theme } from 'react-native-paper';
 import { Theme as NavigationTheme } from '@react-navigation/native';
 
-export const lightTheme = {
+// Extend the MD3Theme colors to include our custom properties
+declare global {
+  namespace ReactNativePaper {
+    interface MD3Colors {
+      notification: string;
+      placeholder: string;
+    }
+  }
+}
+
+export const lightTheme: MD3Theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
@@ -19,7 +29,7 @@ export const lightTheme = {
   },
 };
 
-export const darkTheme = {
+export const darkTheme: MD3Theme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,

@@ -12,20 +12,35 @@
     "resolveJsonModule": true,
     "noImplicitAny": false,
     "allowSyntheticDefaultImports": true,
-    "types": [],
     "skipDefaultLibCheck": true,
     "isolatedModules": true,
     "moduleResolution": "node",
-    "module": "esnext"
+    "module": "esnext",
+    // Options ajoutées pour une meilleure compatibilité
+    "target": "es2018",
+    "lib": ["es2018", "dom"],
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["node_modules/*"]
+    }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
-    "src/types/**/*.d.ts"
+    "src/types/**/*.d.ts",
+    "src/global.d.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "jest.config.js"
   ]
 }

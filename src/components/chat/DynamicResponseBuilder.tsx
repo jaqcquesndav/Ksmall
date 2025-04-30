@@ -9,58 +9,14 @@ import InventoryWidget from '../inventory/InventoryWidget';
 import AnalysisWidget from '../analytics/AnalysisWidget'; // Verify the file exists or correct the path
 import CodeBlock from '../common/CodeBlock';
 import logger from '../../utils/logger';
-import { CHAT_MODES } from './ModeSelector';
-
-// Export pour utilisation externe
-export enum MESSAGE_TYPES {
-  REGULAR_CHAT = 'regular_chat',
-  JOURNAL_ENTRY = 'journal_entry',
-  INVENTORY = 'inventory',
-  ANALYSIS = 'analysis',
-  MARKDOWN = 'markdown',
-  LATEX = 'latex',
-  CODE = 'code'
-}
-
-export interface MessageAttachment {
-  id: string;
-  name: string;
-  type: string;
-  url: string;
-}
-
-export interface Message {
-  id: string;
-  content: string;
-  messageType: MESSAGE_TYPES;
-  isUser: boolean;
-  timestamp: string;
-  attachments?: MessageAttachment[];
-  status?: 'pending' | 'validated' | 'error';
-  journalData?: any;
-  inventoryData?: any;
-  analysisData?: any;
-  codeLanguage?: string;
-  userReaction?: 'like' | 'dislike' | null;
-  isSystemMessage?: boolean; // Ajout de cette propriété pour les messages système
-}
-
-export interface InventoryData {
-  items: Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    price: number;
-  }>;
-  totalValue: number;
-}
+import { CHAT_MODES, MESSAGE_TYPES, UIMessage, MessageAttachment } from '../../types/chat';
 
 interface DynamicResponseBuilderProps {
-  message: Message;
-  onValidate?: (message: Message) => void;
-  onEdit?: (message: Message) => void;
-  onDelete?: (message: Message) => void;
-  onAttach?: (message: Message) => void;
+  message: UIMessage;
+  onValidate?: (message: UIMessage) => void;
+  onEdit?: (message: UIMessage) => void;
+  onDelete?: (message: UIMessage) => void;
+  onAttach?: (message: UIMessage) => void;
   currentMode?: CHAT_MODES;
 }
 
@@ -70,7 +26,7 @@ const DynamicResponseBuilder: React.FC<DynamicResponseBuilderProps> = ({
   onEdit,
   onDelete,
   onAttach,
-  currentMode = CHAT_MODES.REGULAR
+  currentMode = CHAT_MODES.ASSISTANT
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();

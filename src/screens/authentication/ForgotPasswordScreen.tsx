@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { TextInput, Button, Text, Title, useTheme } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { TextInput, Button, Text, Title, useTheme, HelperText, Snackbar, IconButton } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useAuth } from '../../context/AuthContext';
+import { useNetInfo } from '@react-native-community/netinfo';
+import logger from '../../utils/logger';
 
 type AuthStackParamList = {
   Login: undefined;
-  Signup: undefined;
+  Register: undefined;
   TwoFactorAuth: { email: string };
   ForgotPassword: undefined;
   Onboarding: undefined;
@@ -19,102 +22,161 @@ const ForgotPasswordScreen: React.FC = () => {
   const { t } = useTranslation();
   const theme = useTheme();
   const navigation = useNavigation<ForgotPasswordNavigationProp>();
+  const auth = useAuth();
+  const netInfo = useNetInfo();
   
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [error, setError] = useState('');
-  
-  const handleSubmit = async () => {
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setError(t('valid_email_required'));
+  const [error, setError] = useState<string | null>(null);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  // Vérifier si l'utilisateur est hors ligne
+  useEffect(() => {
+    if (netInfo.isConnected === false) {
+      setSnackbarMessage(t('offline_mode_feature_unavailable'));
+      setSnackbarVisible(true);
+    }
+  }, [netInfo.isConnected, t]);
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSendResetEmail = async () => {
+    // Vérifier si en ligne
+    if (netInfo.isConnected === false) {
+      setSnackbarMessage(t('offline_mode_feature_unavailable'));
+      setSnackbarVisible(true);
+      return;
+    }
+
+    // Validation de l'email
+    if (!email) {
+      setError(t('email_required'));
       return;
     }
     
-    setError('');
+    if (!validateEmail(email)) {
+      setError(t('invalid_email'));
+      return;
+    }
+
+    setError(null);
     setLoading(true);
-    
+
     try {
-      // API call would go here
-      // For now, just simulate API call
-      setTimeout(() => {
-        setEmailSent(true);
-      }, 1500);
-    } catch (error) {
-      console.error('Password reset error:', error);
-      setError(t('password_reset_error'));
+      // Utiliser notre contexte d'authentification pour réinitialiser le mot de passe
+      await auth.resetPassword(email);
+      setEmailSent(true);
+      logger.info(`✅ Password reset email sent to ${email}`);
+    } catch (error: any) {
+      logger.error('❌ Failed to send password reset email:', error);
+      Alert.alert(
+        t('reset_password_error'),
+        error?.message || t('reset_password_generic_error'),
+        [{ text: t('ok') }]
+      );
     } finally {
       setLoading(false);
     }
   };
-  
+
   return (
     <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Title style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>
-          {emailSent ? t('check_your_email') : t('forgot_password')}
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        />
+        
+        <Title style={styles.title}>
+          {t('forgot_password')}
         </Title>
         
         {!emailSent ? (
           <>
-            <Text style={{ textAlign: 'center', marginBottom: 24, color: '#666' }}>
+            <Text style={styles.subtitle}>
               {t('forgot_password_instructions')}
             </Text>
             
             <TextInput
               label={t('email')}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                setError(null);
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
               style={styles.input}
               error={!!error}
-              mode="outlined"
+              disabled={loading || auth.loading}
             />
             
-            {error ? (
-              <Text style={{ color: 'red', marginBottom: 8 }}>
+            {error && (
+              <HelperText type="error" visible={!!error}>
                 {error}
-              </Text>
-            ) : null}
+              </HelperText>
+            )}
             
             <Button
               mode="contained"
-              onPress={handleSubmit}
-              style={{ marginTop: 16, paddingVertical: 8 }}
-              loading={loading}
-              disabled={loading}
+              onPress={handleSendResetEmail}
+              style={styles.button}
+              loading={loading || auth.loading}
+              disabled={loading || auth.loading}
             >
               {t('send_reset_link')}
             </Button>
+            
+            <Button
+              mode="text"
+              onPress={() => navigation.navigate('Login')}
+              style={styles.textButton}
+            >
+              {t('back_to_login')}
+            </Button>
           </>
         ) : (
-          <>
-            <Text style={{ textAlign: 'center', marginBottom: 24, color: '#666' }}>
-              {t('password_reset_email_sent', { email })}
+          <View style={styles.successContainer}>
+            <Text style={styles.successMessage}>
+              {t('reset_email_sent', { email })}
+            </Text>
+            
+            <Text style={styles.instructionText}>
+              {t('reset_email_instructions')}
             </Text>
             
             <Button
               mode="contained"
               onPress={() => navigation.navigate('Login')}
-              style={{ marginTop: 16 }}
+              style={styles.button}
             >
               {t('back_to_login')}
             </Button>
-          </>
+          </View>
         )}
-        
-        <Button
-          mode="text"
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          {emailSent ? t('done') : t('back')}
-        </Button>
       </ScrollView>
+      
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{
+          label: t('ok'),
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </KeyboardAvoidingView>
   );
 };
@@ -127,33 +189,51 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 24,
-    justifyContent: 'center',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 16,
-    textAlign: 'center',
   },
-  description: {
-    textAlign: 'center',
-    marginBottom: 24,
+  subtitle: {
+    fontSize: 16,
     color: '#666',
+    marginBottom: 24,
+    lineHeight: 22,
   },
   input: {
     marginBottom: 16,
   },
-  errorText: {
-    color: 'red',
-    marginBottom: 16,
-  },
   button: {
-    marginTop: 8,
+    marginTop: 16,
     paddingVertical: 8,
   },
-  backButton: {
+  textButton: {
     marginTop: 16,
   },
+  successContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  successMessage: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  instructionText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 24,
+    lineHeight: 22,
+    textAlign: 'center',
+  }
 });
 
 export default ForgotPasswordScreen;

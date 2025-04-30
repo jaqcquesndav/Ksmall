@@ -113,3 +113,91 @@ export interface ReportItem {
   accountId?: string;
   percentage?: number;
 }
+
+/**
+ * Type représentant une transaction financière dans le service
+ */
+export interface ServiceTransaction {
+  id: string;
+  date: string;
+  reference: string;
+  description: string;
+  entries: ServiceTransactionEntry[];
+  amount: number;
+  status: 'pending' | 'validated' | 'canceled';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+  attachments?: ServiceAttachment[];
+}
+
+/**
+ * Type représentant une entrée de transaction dans le service
+ */
+export interface ServiceTransactionEntry {
+  accountId: string;
+  accountNumber: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+}
+
+/**
+ * Type représentant un compte comptable dans le service
+ */
+export interface ServiceAccount {
+  id: string;
+  number: string;
+  name: string;
+  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  balance: number;
+  isActive: boolean;
+}
+
+/**
+ * Type représentant une pièce jointe dans le service
+ */
+export interface ServiceAttachment {
+  id: string;
+  filename: string;
+  url: string;
+  contentType: string;
+  size: number;
+  uploadedAt: string;
+}
+
+/**
+ * Type représentant un rapport financier dans le service
+ */
+export interface ServiceFinancialReport {
+  id: string;
+  type: 'balance_sheet' | 'income_statement' | 'cash_flow' | 'trial_balance';
+  title: string;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  data: any;
+}
+
+/**
+ * Type représentant une écriture au journal dans le service
+ */
+export interface ServiceJournalEntry {
+  date: string;
+  reference: string;
+  description: string;
+  entries: {
+    accountId: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+    description: string;
+  }[];
+  status: string;
+  total: number;
+  attachments: any[];
+  companyId: string;
+}

@@ -2,19 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-// Define valid icon types to ensure type safety
-type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
-
-interface SettingsItemProps {
-  title: string;
-  subtitle?: string;
-  icon: IconName; // Using the IconName type to ensure icon names are valid
-  onPress?: () => void;
-  value?: string;
-  showChevron?: boolean;
-  disabled?: boolean;
-}
+import { SettingsItemProps } from '../../types/settings';
 
 const SettingsItem: React.FC<SettingsItemProps> = ({
   title,

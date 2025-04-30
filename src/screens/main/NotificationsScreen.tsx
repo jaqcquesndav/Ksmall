@@ -11,19 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../../context/ThemeContext';
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'transaction' | 'system' | 'reminder' | 'alert';
-  read: boolean;
-  timestamp: Date;
-}
+import { UINotification, NOTIFICATION_TYPES } from '../../types/notification';
 
 const NotificationsScreen = () => {
   const { theme } = useContext(ThemeContext);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<UINotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
 
@@ -34,46 +26,51 @@ const NotificationsScreen = () => {
 
   const loadNotifications = () => {
     setTimeout(() => {
-      const mockNotifications: Notification[] = [
+      const mockNotifications: UINotification[] = [
         {
           id: '1',
           title: 'Paiement reçu',
           message: 'Vous avez reçu un paiement de 75.000 XAF via Orange Money.',
-          type: 'transaction',
+          type: NOTIFICATION_TYPES.TRANSACTION,
           read: false,
           timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
+          createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
         },
         {
           id: '2',
           title: 'Rappel d\'échéance',
           message: 'La facture #INV-2023-045 est à échéance demain.',
-          type: 'reminder',
+          type: NOTIFICATION_TYPES.REMINDER,
           read: false,
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
+          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
         },
         {
           id: '3',
           title: 'Mise à jour système',
           message: 'KSmall a été mis à jour vers la version 1.0.2. Découvrez les nouvelles fonctionnalités.',
-          type: 'system',
+          type: NOTIFICATION_TYPES.SYSTEM,
           read: true,
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
+          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
         },
         {
           id: '4',
           title: 'Stock faible',
           message: 'Le produit "Cahier 100 pages" a atteint son seuil minimal de stock.',
-          type: 'alert',
+          type: NOTIFICATION_TYPES.ALERT,
           read: true,
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
+          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
         },
         {
           id: '5',
           title: 'Écriture validée',
           message: 'L\'écriture comptable #JE-2023-128 a été validée avec succès.',
-          type: 'system',
+          type: NOTIFICATION_TYPES.SYSTEM,
           read: true,
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72), // 3 days ago
+          createdAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
         },
       ];
 
@@ -112,13 +109,13 @@ const NotificationsScreen = () => {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'transaction':
+      case NOTIFICATION_TYPES.TRANSACTION:
         return { name: 'cash-outline', color: theme.colors.success, backgroundColor: theme.colors.success + '20' };
-      case 'reminder':
+      case NOTIFICATION_TYPES.REMINDER:
         return { name: 'alarm-outline', color: theme.colors.warning, backgroundColor: theme.colors.warning + '20' };
-      case 'system':
+      case NOTIFICATION_TYPES.SYSTEM:
         return { name: 'information-circle-outline', color: theme.colors.primary, backgroundColor: theme.colors.primary + '20' };
-      case 'alert':
+      case NOTIFICATION_TYPES.ALERT:
         return { name: 'alert-circle-outline', color: theme.colors.error, backgroundColor: theme.colors.error + '20' };
       default:
         return { name: 'notifications-outline', color: theme.colors.text, backgroundColor: theme.colors.text + '20' };
@@ -141,8 +138,9 @@ const NotificationsScreen = () => {
     }
   };
 
-  const renderNotificationItem = ({ item }: { item: Notification }) => {
+  const renderNotificationItem = ({ item }: { item: UINotification }) => {
     const icon = getNotificationIcon(item.type);
+    const timestamp = item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp);
     
     return (
       <TouchableOpacity
@@ -163,7 +161,7 @@ const NotificationsScreen = () => {
               {item.title}
             </Text>
             <Text style={[styles.notificationTime, { color: theme.colors.text + '80' }]}>
-              {formatTimestamp(item.timestamp)}
+              {formatTimestamp(timestamp)}
             </Text>
           </View>
           
@@ -226,10 +224,10 @@ const NotificationsScreen = () => {
       
       <View style={[styles.tabsContainer, { borderBottomColor: theme.colors.border }]}>
         {renderTabButton('Tout', 'all')}
-        {renderTabButton('Transactions', 'transaction')}
-        {renderTabButton('Rappels', 'reminder')}
-        {renderTabButton('Système', 'system')}
-        {renderTabButton('Alertes', 'alert')}
+        {renderTabButton('Transactions', NOTIFICATION_TYPES.TRANSACTION)}
+        {renderTabButton('Rappels', NOTIFICATION_TYPES.REMINDER)}
+        {renderTabButton('Système', NOTIFICATION_TYPES.SYSTEM)}
+        {renderTabButton('Alertes', NOTIFICATION_TYPES.ALERT)}
       </View>
       
       {isLoading ? (
