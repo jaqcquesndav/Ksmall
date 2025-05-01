@@ -3,6 +3,19 @@
  * Implémente une stratégie d'initialisation robuste pour le mode offline-first
  */
 
+// Technique d'interception d'erreur pour le runtime Hermes
+try {
+  // Protection pour les environnements avec le moteur Hermes
+  if (typeof global !== 'undefined' && typeof global.HermesInternal !== 'undefined') {
+    // Sécuriser l'accès à require pour Hermes
+    if (typeof global.require === 'undefined' && typeof __r === 'function') {
+      global.require = __r;
+    }
+  }
+} catch (e) {
+  // Ignorer les erreurs à ce stade, elles seront gérées par pre-init
+}
+
 // IMPORTANT: Importer le pré-init avant tout autre module
 import './src/utils/pre-init';
 
@@ -12,6 +25,12 @@ import { registerRootComponent } from 'expo';
 
 // Ensuite importer l'app
 import App from './App';
+
+// Vérifier si le mode offline est activé
+const isOfflineMode = global && 
+  global.process && 
+  global.process.env && 
+  global.process.env.REACT_NATIVE_OFFLINE_MODE === 'true';
 
 // Fonction d'enregistrement sécurisée
 function safeRegister() {
@@ -27,6 +46,8 @@ function safeRegister() {
     if (global) {
       global.__REGISTRATION_COMPLETE__ = true;
     }
+    
+    console.log(`Application initialisée avec succès (mode ${isOfflineMode ? 'OFFLINE' : 'ONLINE'})`);
   } catch (error) {
     // En cas d'erreur, nouvelle tentative avec un délai
     console.error('Erreur lors du premier enregistrement:', error);

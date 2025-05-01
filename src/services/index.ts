@@ -10,35 +10,44 @@
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
 
+// Importer statiquement toutes les implémentations possibles (évite l'utilisation de require dynamique)
+import ApiServiceDefault from './ApiService';
+import ApiServiceWrapperDefault from './ApiServiceWrapper';
+import ApiServiceFallbackDefault from './ApiServiceFallback';
+
+// Instance d'API qui sera configurée
 let api: any;
 
-try {
-  if (Platform.OS === 'android') {
-    // Utiliser l'implémentation basée sur fetch pour Android
-    const ApiServiceWrapper = require('./ApiServiceWrapper').default;
-    api = ApiServiceWrapper;
-    logger.info('Using Fetch API implementation for Android');
-  } else {
-    // Utiliser l'implémentation basée sur axios pour iOS et Web
-    try {
-      const ApiService = require('./ApiService').default;
-      api = ApiService;
-      logger.info(`Using Axios API implementation for ${Platform.OS}`);
-    } catch (axiosError) {
-      // Si axios n'est pas disponible, utiliser l'implémentation basée sur fetch
-      logger.warn(`Failed to load Axios implementation: ${axiosError.message}, falling back to Fetch`);
-      const ApiServiceWrapper = require('./ApiServiceWrapper').default;
-      api = ApiServiceWrapper;
-      logger.info(`Fallback: Using Fetch API implementation for ${Platform.OS}`);
+// Fonction d'initialisation sécurisée
+const initializeApi = () => {
+  try {
+    if (Platform.OS === 'android') {
+      // Utiliser l'implémentation basée sur fetch pour Android
+      api = ApiServiceWrapperDefault;
+      logger.info('Using Fetch API implementation for Android');
+    } else {
+      // Utiliser l'implémentation basée sur axios pour iOS et Web
+      try {
+        api = ApiServiceDefault;
+        logger.info(`Using Axios API implementation for ${Platform.OS}`);
+      } catch (axiosError) {
+        // Si axios n'est pas disponible, utiliser l'implémentation basée sur fetch
+        logger.warn(`Failed to load Axios implementation, falling back to Fetch`);
+        api = ApiServiceWrapperDefault;
+        logger.info(`Fallback: Using Fetch API implementation for ${Platform.OS}`);
+      }
     }
+  } catch (error) {
+    // En cas d'échec complet, utiliser l'implémentation de secours
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to load API implementations: ${errorMsg}, using fallback`);
+    api = ApiServiceFallbackDefault;
+    logger.warn('Using Demo API implementation (no real API calls will be made)');
   }
-} catch (error) {
-  // En cas d'échec complet, utiliser l'implémentation de secours
-  logger.error(`Failed to load API implementations: ${error.message}, using fallback`);
-  const ApiServiceFallback = require('./ApiServiceFallback').default;
-  api = ApiServiceFallback;
-  logger.warn('Using Demo API implementation (no real API calls will be made)');
-}
+};
+
+// Initialiser l'API immédiatement
+initializeApi();
 
 // Exporter l'instance API sélectionnée
 export { api };

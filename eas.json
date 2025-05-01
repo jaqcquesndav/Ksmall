@@ -14,10 +14,27 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease",
         "withoutCredentials": true
+      },
+      "env": {
+        "EXPO_SKIP_PREBUILD": "1"
       }
     },
     "production": {
       "autoIncrement": true
+    },
+    "local": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "withoutCredentials": true
+      },
+      "env": {
+        "REACT_NATIVE_OFFLINE_MODE": "true"
+      },
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      }
     }
   },
   "submit": {

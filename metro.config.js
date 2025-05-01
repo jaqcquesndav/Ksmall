@@ -50,14 +50,15 @@ config.transformer = {
     mangle: {
       keep_classnames: true,
       keep_fnames: true,
+      reserved: ['require', 'global', '__r', 'process'],
     },
   },
   // S'assurer que process.env est correctement géré
-  inlineRequires: true,
+  inlineRequires: false, // Désactivé pour éviter les problèmes avec require
   // Ajouter les define plugins pour les variables globales
   globalDefines: {
     'process.env.NODE_ENV': process.env.NODE_ENV || 'development',
-    '__OFFLINE_FIRST__': true,
+    '__OFFLINE_FIRST__': process.env.REACT_NATIVE_OFFLINE_MODE === 'true',
   },
 };
 
@@ -75,9 +76,25 @@ config.serializer = {
   getModulesRunBeforeMainModule: () => [
     require.resolve('./src/utils/pre-init'),
   ],
-  experimentalSerializerHook: (graph, delta) => {
-    // Aucune modification requise ici
-    return { graph, delta };
+  createModuleIdFactory: () => {
+    // Garantir que les modules critiques ont des IDs stables
+    const criticalModules = {
+      './src/utils/pre-init': 0,
+      './index': 1,
+    };
+    
+    return (path) => {
+      if (criticalModules[path] !== undefined) {
+        return criticalModules[path];
+      }
+      
+      // Hash stable pour les autres modules
+      let hash = 0;
+      for (let i = 0; i < path.length; i++) {
+        hash = (hash * 31 + path.charCodeAt(i)) % 2147483648;
+      }
+      return hash + 1000; // Offset pour éviter les conflits
+    };
   },
 };
 
@@ -95,7 +112,15 @@ config.server = {
   },
 };
 
-// Force le rechargement du cache pour cette session
-config.resetCache = true;
+// Configuration pour détecter et améliorer la transition online/offline
+if (process.env.REACT_NATIVE_OFFLINE_MODE === 'true') {
+  console.log('⚡ Configuration optimisée pour le mode OFFLINE');
+  // Réglages spécifiques au mode offline
+  config.transformer.experimentalImportSupport = false;
+} else {
+  console.log('🌐 Configuration optimisée pour le mode ONLINE');
+  // Réglages spécifiques au mode online
+  config.transformer.experimentalImportSupport = true;
+}
 
 module.exports = config;

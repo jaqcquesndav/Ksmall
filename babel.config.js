@@ -16,37 +16,20 @@ module.exports = function(api) {
         "safe": true,
         "allowUndefined": true
       }],
-      // Ajout de plugins pour résoudre les problèmes de dépendances circulaires
+      // Plugins de transformation avec Hermes compatibility
+      ["@babel/plugin-transform-class-properties", { "loose": false }],
+      ["@babel/plugin-transform-private-methods", { "loose": false }],
+      ["@babel/plugin-transform-private-property-in-object", { "loose": false }],
+      // Plugins supplémentaires
       "@babel/plugin-transform-flow-strip-types",
-      "@babel/plugin-proposal-class-properties",
       "@babel/plugin-proposal-optional-chaining",
       "@babel/plugin-proposal-nullish-coalescing-operator"
     ],
-    // Options pour préserver les commentaires et améliorer la gestion des erreurs
-    compact: false,
-    comments: true,
-    retainLines: true,
-    sourceType: 'unambiguous',
-    // Options pour améliorer la stabilité du bundling
-    minified: false,
-    sourceMaps: true,
-    // Configuration pour les fichiers problématiques
-    overrides: [
-      {
-        test: /\.ts$/,
-        sourceType: 'unambiguous',
-        plugins: [
-          ['@babel/plugin-transform-typescript', {
-            allowNamespaces: true,
-            onlyRemoveTypeImports: true
-          }]
-        ]
-      },
-      // Gérer spécifiquement les modules problématiques
-      {
-        test: /node_modules[\/\\](react-native|@react-native-community|@react-navigation|react-native-reanimated)/,
-        sourceType: 'unambiguous'
+    // Ajouter cette section pour permettre la globalisation de require
+    env: {
+      production: {
+        plugins: ['babel-plugin-transform-remove-console']  // Nom complet du plugin
       }
-    ]
+    }
   };
 };

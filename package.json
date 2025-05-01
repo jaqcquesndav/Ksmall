@@ -4,18 +4,22 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "android-lan": "expo start --android --lan",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "clean": "node -e \"require('fs').rmSync('node_modules', { recursive: true, force: true })\" && npm cache clean --force && npm install",
     "clean:win": "rmdir /s /q node_modules && npm cache clean --force && npm install",
     "start:offline": "cross-env REACT_NATIVE_OFFLINE_MODE=true expo start",
+    "start:online": "cross-env REACT_NATIVE_OFFLINE_MODE=false expo start --clear",
     "check": "node -e \"console.log('App dependencies ok!')\" && expo diagnostics",
     "android:clear": "expo start --android --lan --clear",
     "clear-cache": "expo start --clear",
     "debug": "expo start --dev-client",
-    "android-clear": "expo start --android --clear"
+    "android-clear": "expo start --android --clear",
+    "check-deps": "npx depcheck",
+    "reset-metro": "npx react-native-clean-project --remove-ios-build --remove-android-build --reset-yarn-lock --keep-node-modules",
+    "reset-hermesvm": "npx react-native-clean-project --reset-cache"
   },
   "dependencies": {
     "@expo/metro-config": "~0.20.0",
@@ -97,12 +101,16 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@react-native-community/cli": "latest",
+    "@react-native-community/cli-platform-android": "^18.0.0",
     "@types/date-fns": "^2.6.3",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.0.10",
     "@types/react-native-vector-icons": "^6.4.18",
     "@types/react-redux": "^7.1.34",
+    "babel-plugin-transform-remove-console": "^6.9.4",
+    "cross-env": "^7.0.3",
     "metro-config": "^0.82.0",
+    "react-native-clean-project": "^4.0.3",
     "react-native-dotenv": "^3.4.11",
     "typescript": "~5.8.3"
   },
