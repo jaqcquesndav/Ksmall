@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import { LineChart } from 'react-native-chart-kit';
+import { VictoryChart, VictoryLine, VictoryAxis, VictoryTheme, VictoryGroup, VictoryLegend, VictoryVoronoiContainer } from 'victory';
 import { Ionicons } from '@expo/vector-icons';
 
 interface FinancialChartProps {
@@ -17,113 +17,89 @@ interface FinancialChartProps {
 
 const FinancialChart: React.FC<FinancialChartProps> = ({ theme, data: propData }) => {
   const [timeframe, setTimeframe] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
-  
-  // Sample data
-  const weekData = {
-    labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
-    datasets: [
-      {
-        data: [25000, 35000, 28000, 45000, 42000, 38000, 50000],
-        color: (opacity = 1) => theme.colors.primary,
-        strokeWidth: 2,
-      },
-      {
-        data: [20000, 30000, 22000, 40000, 35000, 32000, 45000],
-        color: (opacity = 1) => theme.colors.secondary + '80',
-        strokeWidth: 2,
-      },
-    ],
+
+  const transformDataForVictory = (labels: string[], datasets: any[]) => {
+    return datasets.map(dataset => ({
+      data: labels.map((label, i) => ({ x: label, y: dataset.data[i] })),
+      color: dataset.color ? dataset.color(1) : theme.colors.primary,
+      strokeWidth: dataset.strokeWidth || 2,
+    }));
   };
-  
-  const monthData = {
-    labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
-    datasets: [
-      {
-        data: [150000, 180000, 210000, 250000],
-        color: (opacity = 1) => theme.colors.primary,
-        strokeWidth: 2,
-      },
-      {
-        data: [120000, 160000, 175000, 225000],
-        color: (opacity = 1) => theme.colors.secondary + '80',
-        strokeWidth: 2,
-      },
-    ],
-  };
-  
-  const quarterData = {
-    labels: ['Jan', 'Fév', 'Mar'],
-    datasets: [
-      {
-        data: [500000, 580000, 620000],
-        color: (opacity = 1) => theme.colors.primary,
-        strokeWidth: 2,
-      },
-      {
-        data: [450000, 510000, 570000],
-        color: (opacity = 1) => theme.colors.secondary + '80',
-        strokeWidth: 2,
-      },
-    ],
-  };
-  
-  const yearData = {
-    labels: ['T1', 'T2', 'T3', 'T4'],
-    datasets: [
-      {
-        data: [1800000, 2200000, 2500000, 2900000],
-        color: (opacity = 1) => theme.colors.primary,
-        strokeWidth: 2,
-      },
-      {
-        data: [1600000, 2000000, 2300000, 2600000],
-        color: (opacity = 1) => theme.colors.secondary + '80',
-        strokeWidth: 2,
-      },
-    ],
-  };
-  
+
+  const weekData = transformDataForVictory(
+    ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    [
+      { data: [25000, 35000, 28000, 45000, 42000, 38000, 50000], color: (opacity = 1) => theme.colors.primary, strokeWidth: 2 },
+      { data: [20000, 30000, 22000, 40000, 35000, 32000, 45000], color: (opacity = 1) => theme.colors.secondary + '80', strokeWidth: 2 },
+    ]
+  );
+
+  const monthData = transformDataForVictory(
+    ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
+    [
+      { data: [150000, 180000, 210000, 250000], color: (opacity = 1) => theme.colors.primary, strokeWidth: 2 },
+      { data: [120000, 160000, 175000, 225000], color: (opacity = 1) => theme.colors.secondary + '80', strokeWidth: 2 },
+    ]
+  );
+
+  const quarterData = transformDataForVictory(
+    ['Jan', 'Fév', 'Mar'],
+    [
+      { data: [500000, 580000, 620000], color: (opacity = 1) => theme.colors.primary, strokeWidth: 2 },
+      { data: [450000, 510000, 570000], color: (opacity = 1) => theme.colors.secondary + '80', strokeWidth: 2 },
+    ]
+  );
+
+  const yearData = transformDataForVictory(
+    ['T1', 'T2', 'T3', 'T4'],
+    [
+      { data: [1800000, 2200000, 2500000, 2900000], color: (opacity = 1) => theme.colors.primary, strokeWidth: 2 },
+      { data: [1600000, 2000000, 2300000, 2600000], color: (opacity = 1) => theme.colors.secondary + '80', strokeWidth: 2 },
+    ]
+  );
+
   const getChartData = () => {
-    if (propData) return propData;
-    
+    if (propData) return transformDataForVictory(propData.labels, propData.datasets);
+
     switch (timeframe) {
-      case 'week':
-        return weekData;
-      case 'month':
-        return monthData;
-      case 'quarter':
-        return quarterData;
-      case 'year':
-        return yearData;
-      default:
-        return monthData;
+      case 'week': return weekData;
+      case 'month': return monthData;
+      case 'quarter': return quarterData;
+      case 'year': return yearData;
+      default: return monthData;
     }
   };
-  
-  const chartData = getChartData();
-  
-  const chartConfig = {
-    backgroundColor: theme.dark ? theme.colors.card : '#FFFFFF',
-    backgroundGradientFrom: theme.dark ? theme.colors.card : '#FFFFFF',
-    backgroundGradientTo: theme.dark ? theme.colors.card : '#FFFFFF',
-    decimalPlaces: 0,
-    color: (opacity = 1) => theme.colors.text + 'aa',
-    labelColor: (opacity = 1) => theme.colors.text + 'dd',
-    style: {
-      borderRadius: 12,
+
+  const chartDataSets = getChartData();
+
+  const victoryTheme = {
+    ...VictoryTheme.material,
+    axis: {
+      ...VictoryTheme.material.axis,
+      style: {
+        axis: { stroke: theme.colors.outline, strokeWidth: 1 },
+        tickLabels: { fill: theme.colors.onSurfaceVariant, fontSize: 10, padding: 5 },
+        grid: { stroke: theme.colors.surfaceVariant, strokeDasharray: '3, 5' },
+      },
     },
-    propsForDots: {
-      r: "4",
-      strokeWidth: "2",
-      stroke: theme.colors.background,
-    },
-    propsForLabels: {
-      fontSize: 12,
+    group: {
+      colorScale: chartDataSets.map(ds => ds.color),
     },
   };
-  
+
   const screenWidth = Dimensions.get("window").width - 40;
-  
+
+  const formatYTick = (tick: number | string): string => {
+    const num = Number(tick);
+    if (isNaN(num)) return String(tick);
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(0) + 'k';
+    }
+    return String(num);
+  };
+
   const TimeframeButton = ({ title, value, isActive }) => (
     <TouchableOpacity
       style={[
@@ -142,7 +118,12 @@ const FinancialChart: React.FC<FinancialChartProps> = ({ theme, data: propData }
       </Text>
     </TouchableOpacity>
   );
-  
+
+  const legendData = [
+    { name: "Entrées", symbol: { fill: theme.colors.primary } },
+    { name: "Sorties", symbol: { fill: theme.colors.secondary + '80' } }
+  ];
+
   return (
     <View style={styles.container}>
       <View style={styles.chartHeader}>
@@ -154,40 +135,48 @@ const FinancialChart: React.FC<FinancialChartProps> = ({ theme, data: propData }
           <TimeframeButton title="1A" value="year" isActive={timeframe === 'year'} />
         </View>
       </View>
-      
-      <View style={[styles.legendContainer]}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: theme.colors.primary }]} />
-          <Text style={{ color: theme.colors.text }}>Entrées</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: theme.colors.secondary + '80' }]} />
-          <Text style={{ color: theme.colors.text }}>Sorties</Text>
-        </View>
-      </View>
-      
-      <LineChart
-        data={chartData}
-        width={screenWidth}
-        height={220}
-        chartConfig={chartConfig}
-        bezier
-        style={styles.chart}
-        withInnerLines={true}
-        withOuterLines={false}
-        withHorizontalLines={true}
-        withVerticalLines={false}
-        yAxisInterval={1}
-        formatYLabel={(value) => {
-          const num = parseInt(value);
-          if (num >= 1000000) {
-            return (num / 1000000).toFixed(1) + 'M';
-          } else if (num >= 1000) {
-            return (num / 1000).toFixed(0) + 'k';
-          }
-          return value;
-        }}
+
+      <VictoryLegend
+        x={10} y={0}
+        orientation="horizontal"
+        gutter={20}
+        style={{ labels: { fill: theme.colors.onSurfaceVariant, fontSize: 12 } }}
+        data={legendData}
       />
+
+      <VictoryChart
+        width={screenWidth}
+        height={250}
+        theme={victoryTheme}
+        padding={{ top: 10, bottom: 30, left: 50, right: 20 }}
+        containerComponent={<VictoryVoronoiContainer voronoiDimension="x" labels={({ datum }) => `${datum.x}: ${formatYTick(datum.y)}`} />}
+      >
+        <VictoryAxis
+          dependentAxis
+          tickFormat={formatYTick}
+          style={{ grid: { stroke: theme.colors.outline + '30' } }}
+        />
+        <VictoryAxis
+          style={{ tickLabels: { angle: -30, textAnchor: 'end', fontSize: 9 } }}
+        />
+        <VictoryGroup
+          colorScale={chartDataSets.map(ds => ds.color)}
+        >
+          {chartDataSets.map((dataset, index) => (
+            <VictoryLine
+              key={index}
+              data={dataset.data}
+              style={{
+                data: { strokeWidth: dataset.strokeWidth }
+              }}
+              animate={{
+                duration: 500,
+                onLoad: { duration: 500 }
+              }}
+            />
+          ))}
+        </VictoryGroup>
+      </VictoryChart>
     </View>
   );
 };
@@ -218,21 +207,6 @@ const styles = StyleSheet.create({
   timeframeButtonText: {
     fontSize: 12,
     fontWeight: '500',
-  },
-  legendContainer: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 5,
   },
   chart: {
     borderRadius: 12,

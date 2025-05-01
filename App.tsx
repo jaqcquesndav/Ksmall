@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { StatusBar, LogBox, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StatusBar, LogBox, Platform, View, Text, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { Provider as ReduxProvider } from 'react-redux';
@@ -11,7 +11,6 @@ import { ThemeProvider, useThemeContext } from './src/context/ThemeContext';
 import { DatabaseProvider } from './src/context/DatabaseContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import DatabaseService from './src/services/DatabaseService';
-import AccountingService from './src/services/AccountingService';
 import { api } from './src/services'; // Importer le proxy API
 import './src/i18n'; // Import translations
 import logger from './src/utils/logger';
@@ -21,28 +20,30 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import networkUtils from './src/utils/networkUtils';
 import { setupErrorHandling, ErrorType, handleError } from './src/utils/errorHandler';
 import AppLoader from './src/utils/AppLoader';
-import { OFFLINE_MODE } from '@env';
+import { OFFLINE_MODE } from '@env'; // Corrected import path
 
-// Définir la variable globale pour le mode démo
-declare global {
-  var __DEMO_MODE__: boolean;
-  var __OFFLINE_MODE__: boolean; // Nouvelle variable pour le mode offline forcé
-}
-global.__DEMO_MODE__ = __DEV__ || Platform.OS === 'android'; // Activer automatiquement le mode démo sur Android et en développement
-global.__OFFLINE_MODE__ = false; // Par défaut, le mode offline n'est pas forcé
+// Activer le mode démo/offline par défaut pour garantir un démarrage sécurisé
+global.__DEMO_MODE__ = true; 
+global.__OFFLINE_MODE__ = true; 
 
-// Ignore specific harmless warnings
+// Ignorer certains avertissements pour ne pas polluer la console
 LogBox.ignoreLogs([
   'ReactNativeFiberHostComponent: Calling getNode() on the ref of an Animated component',
   'VirtualizedLists should never be nested inside plain ScrollViews',
   'Warning: componentWill',
   'Remote debugger',
-  // Ignorer les avertissements liés à SQLite en mode offline
   'WebSQL is deprecated',
-  // Ignorer les avertissements liés à la synchronisation
   '[SyncService]',
   '[OfflineQueueService]'
 ]);
+
+// Écran de chargement simple quand l'app démarre
+const InitialLoadingScreen = () => (
+  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+    <ActivityIndicator size="large" color="#6200ee" />
+    <Text style={{ marginTop: 20, fontSize: 16 }}>Démarrage en mode offline-first...</Text>
+  </View>
+);
 
 // Composant interne qui utilise le thème du contexte
 const ThemedApp = () => {
@@ -70,74 +71,104 @@ const ThemedApp = () => {
 };
 
 export default function App() {
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState<Error | null>(null);
+
+  // Initialisation immédiate de la base de données
+  useEffect(() => {
+    // Fonction pour initialiser la base de données de manière asynchrone
+    const initDbSafely = async () => {
+      try {
+        // Initialiser la base de données d'abord, avant tout test réseau
+        await DatabaseService.initializeLazy();
+        logger.info('Base de données initialisée avec succès');
+        return true;
+      } catch (error) {
+        logger.error('Erreur lors de l\'initialisation de la base de données:', error);
+        return false;
+      }
+    };
+
+    // Lancer l'initialisation de la base de données immédiatement
+    initDbSafely().catch(e => logger.error(e));
+  }, []);
+
+  // Initialisation complète de l'application
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Vérifier si l'application démarre en mode offline forcé (via les variables d'environnement)
+        // Vérifier le mode offline forcé 
         if (OFFLINE_MODE === 'true') {
           global.__OFFLINE_MODE__ = true;
           logger.info('Application starting in forced OFFLINE mode');
         }
         
-        // Initialiser les utilitaires réseau
-        await networkUtils.initialize();
-        logger.info('Network utilities initialized successfully');
-        
-        // Vérifier si l'appareil est connecté
-        const isOnline = await networkUtils.isNetworkAvailable();
-        logger.info(`Device is ${isOnline ? 'online' : 'offline'}`);
-        
-        // Si mode offline forcé, ne pas essayer de se connecter au serveur
-        if (global.__OFFLINE_MODE__) {
+        // Initialiser le réseau APRÈS avoir vérifié la base de données
+        try {
+          await networkUtils.initialize();
+          logger.info('Network utilities initialized successfully');
+          
+          // Vérifier la connectivité - si erreur, rester en mode offline
+          const isOnline = await networkUtils.isNetworkAvailable().catch(() => false);
+          logger.info(`Device is ${isOnline ? 'online' : 'offline'}`);
+          
+          // Rester en mode offline si déconnecté ou si mode offline forcé
+          if (!isOnline || global.__OFFLINE_MODE__) {
+            global.__DEMO_MODE__ = true;
+            global.__OFFLINE_MODE__ = true;
+            api.enableDemoMode(true);
+            logger.info('Offline mode activated, using local data only');
+          }
+        } catch (networkError) {
+          // En cas d'erreur réseau, rester en mode offline
+          global.__OFFLINE_MODE__ = true;
           global.__DEMO_MODE__ = true;
+          logger.warn('Network initialization failed, staying in offline mode', networkError);
           api.enableDemoMode(true);
-          logger.info('Offline mode activated, using local data only');
-          return;
         }
         
-        // En mode développement sur Android, vérifier si le serveur local est accessible
-        if (__DEV__ && Platform.OS === 'android') {
-          const isServerReachable = await networkUtils.isLocalServerReachable();
-          logger.info(`Local development server is ${isServerReachable ? 'reachable' : 'not reachable'}`);
-          
-          // Si le serveur de développement n'est pas accessible, activer le mode démo
-          if (!isServerReachable) {
-            global.__DEMO_MODE__ = true;
-            api.enableDemoMode(true);
-            logger.info('Local server not available, falling back to demo mode');
+        // S'assurer que les données minimales sont disponibles en mode offline
+        if (global.__OFFLINE_MODE__) {
+          try {
+            await DatabaseService.ensureLocalDataAvailable();
+          } catch (dbError) {
+            logger.warn('Error ensuring local data, but continuing', dbError);
           }
         }
         
-        // Si nous sommes sur Android, activer automatiquement le mode démo
-        if (Platform.OS === 'android') {
-          logger.info('Android platform detected, activating demo mode');
-          api.enableDemoMode(true);
-        }
-        
+        // Terminer l'initialisation
         logger.info(`Application initialized in ${global.__DEMO_MODE__ ? 'DEMO' : 'ONLINE'} mode`);
+        setIsInitializing(false);
       } catch (error) {
-        // En cas d'erreur d'initialisation, activer le mode démo et enregistrer l'erreur
+        // En cas d'erreur globale, passer en mode offline mais continuer
         global.__DEMO_MODE__ = true;
+        global.__OFFLINE_MODE__ = true;
         api.enableDemoMode(true);
-        handleError({
-          type: ErrorType.UNKNOWN,
-          message: 'Failed to initialize application, falling back to demo mode',
-          timestamp: Date.now(),
-          data: error,
-          retryable: false
-        });
-        logger.error('Failed to initialize application, falling back to demo mode', error);
+        
+        logger.error('Error during initialization, continuing in offline mode', error);
+        setInitError(error instanceof Error ? error : new Error(String(error)));
+        setIsInitializing(false);
       }
     };
 
-    initializeApp();
+    // Délai court pour laisser d'autres initialisations se terminer
+    setTimeout(() => {
+      initializeApp().catch(e => {
+        logger.error('Unexpected initialization error', e);
+        setIsInitializing(false);
+      });
+    }, 100);
   }, []);
+
+  // Afficher un écran de chargement pendant l'initialisation
+  if (isInitializing) {
+    return <InitialLoadingScreen />;
+  }
 
   return (
     <ErrorBoundary>
       <ReduxProvider store={store}>
         <ThemeProvider>
-          {/* Utiliser AppLoader pour gérer le démarrage et la synchronisation */}
           <AppLoader>
             <ThemedApp />
           </AppLoader>

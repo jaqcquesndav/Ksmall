@@ -433,6 +433,126 @@ class DatabaseService {
       return false; // En cas d'erreur, ne pas exécuter les migrations
     }
   }
+
+  /**
+   * S'assurer que les données locales minimales sont disponibles pour le fonctionnement offline
+   * Cette méthode est cruciale pour le mode offline-first
+   */
+  static async ensureLocalDataAvailable(): Promise<void> {
+    try {
+      const db = await this.getDatabase();
+      logger.info('Vérification des données locales pour le mode offline');
+      
+      // Vérifier que les tables essentielles existent
+      const [companyTableResult] = await this.executeQuery(
+        db,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='company_profile'",
+        []
+      );
+      
+      if (!companyTableResult || companyTableResult.rows.length === 0) {
+        // Créer les tables essentielles si elles n'existent pas
+        await this.initializeDatabase();
+        logger.info('Tables essentielles créées pour le mode offline');
+      }
+      
+      // Vérifier si des données minimales existent déjà dans la base
+      const [companiesCount] = await this.executeQuery(
+        db,
+        "SELECT COUNT(*) as count FROM company_profile",
+        []
+      );
+      
+      const companyCount = companiesCount?.rows?.item(0)?.count || 0;
+      
+      // Si aucune entreprise n'existe, créer une entreprise par défaut pour le mode offline
+      if (companyCount === 0) {
+        logger.info('Aucune entreprise trouvée, création d\'une entreprise par défaut pour le mode offline');
+        await this.executeQuery(
+          db,
+          `INSERT INTO company_profile (
+            name, 
+            legal_form, 
+            registration_number, 
+            tax_id, 
+            phone, 
+            email, 
+            user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            'Mon Entreprise',
+            'SARL',
+            'REG-DEFAULT',
+            'TAX-DEFAULT',
+            '+243123456789',
+            'contact@monentreprise.com',
+            'offline-user'
+          ]
+        );
+      }
+      
+      // Vérifier l'existence d'un profil utilisateur pour le mode offline
+      const [userProfileCount] = await this.executeQuery(
+        db,
+        "SELECT COUNT(*) as count FROM user_profile WHERE user_id = 'offline-user'",
+        []
+      );
+      
+      const userCount = userProfileCount?.rows?.item(0)?.count || 0;
+      
+      // Créer un profil utilisateur par défaut si nécessaire
+      if (userCount === 0) {
+        await this.executeQuery(
+          db,
+          `INSERT INTO user_profile (
+            user_id,
+            display_name,
+            email,
+            language,
+            theme
+          ) VALUES (?, ?, ?, ?, ?)`,
+          [
+            'offline-user',
+            'Utilisateur Offline',
+            'offline@ksmall.app',
+            'fr',
+            'light'
+          ]
+        );
+        logger.info('Profil utilisateur par défaut créé pour le mode offline');
+      }
+      
+      logger.info('Données locales vérifiées et disponibles pour le mode offline');
+    } catch (error) {
+      logger.error('Erreur lors de la vérification des données locales:', error);
+      // Ne pas faire échouer l'application, continuer quand même
+    }
+  }
+  
+  /**
+   * Obtenir le statut actuel de la base de données
+   * @returns Objet contenant le statut de la base de données
+   */
+  static async getStatus(): Promise<{ isOpen: boolean; version?: number }> {
+    try {
+      if (!this.instance) {
+        return { isOpen: false };
+      }
+      
+      // Tester si la connexion est active
+      const db = this.instance;
+      const [versionResult] = await this.executeQuery(db, "PRAGMA user_version", []);
+      const version = versionResult?.rows?.item(0)?.user_version;
+      
+      return { 
+        isOpen: true, 
+        version 
+      };
+    } catch (error) {
+      logger.error('Erreur lors de la vérification du statut de la base de données:', error);
+      return { isOpen: false };
+    }
+  }
 }
 
 export default DatabaseService;

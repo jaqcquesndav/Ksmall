@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, Text, Dimensions, ScrollView } from 'react-native';
-import { Card, List, Divider } from 'react-native-paper';
+import { Card, List, Divider, useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { BarChart, PieChart, LineChart } from 'react-native-chart-kit';
+import { VictoryBar, VictoryPie, VictoryLine, VictoryChart, VictoryTheme, VictoryAxis, VictoryLabel } from 'victory';
 import Markdown from 'react-native-markdown-display';
+
 
 interface ChartData {
   type: 'bar' | 'pie' | 'line';
@@ -26,76 +27,142 @@ interface AnalysisWidgetProps {
 
 const AnalysisWidget: React.FC<AnalysisWidgetProps> = ({ data }) => {
   const { t } = useTranslation();
+  const theme = useTheme(); // Get theme for styling
   const screenWidth = Dimensions.get('window').width - 40; // Margin for readability
 
-  const renderChart = (chartData: ChartData, index: number) => {
-    const chartConfig = {
-      backgroundColor: '#ffffff',
-      backgroundGradientFrom: '#f8f9fa',
-      backgroundGradientTo: '#f1f3f5',
-      decimalPlaces: 0,
-      color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+  // Define a Victory theme based on react-native-paper theme
+  const victoryTheme = {
+    ...VictoryTheme.material, // Start with a base theme
+    axis: {
+      ...VictoryTheme.material.axis,
       style: {
-        borderRadius: 16
-      }
-    };
+        ...VictoryTheme.material.axis?.style,
+        axis: {
+          stroke: theme.colors.onSurfaceVariant, // Use theme color
+          strokeWidth: 1,
+        },
+        tickLabels: {
+          fill: theme.colors.onSurfaceVariant, // Use theme color
+          fontSize: 10,
+          padding: 5,
+        },
+        grid: {
+          stroke: theme.colors.surfaceVariant, // Use theme color for grid lines
+          strokeDasharray: '3, 5',
+        },
+      },
+    },
+    bar: {
+      ...VictoryTheme.material.bar,
+      style: {
+        ...VictoryTheme.material.bar?.style,
+        data: {
+          fill: theme.colors.primary, // Use theme color
+        },
+        labels: {
+          fill: theme.colors.onSurface, // Use theme color
+          fontSize: 10,
+        },
+      },
+    },
+    line: {
+      ...VictoryTheme.material.line,
+      style: {
+        ...VictoryTheme.material.line?.style,
+        data: {
+          stroke: theme.colors.primary, // Use theme color
+          strokeWidth: 2,
+        },
+        labels: {
+          fill: theme.colors.onSurface, // Use theme color
+          fontSize: 10,
+        },
+      },
+    },
+    pie: {
+      ...VictoryTheme.material.pie,
+      style: {
+        ...VictoryTheme.material.pie?.style,
+        labels: {
+          fill: theme.colors.onSurface, // Use theme color
+          fontSize: 10,
+          padding: 8,
+        },
+      },
+      // Use theme colors for slices if not provided in data
+      colorScale: [theme.colors.primary, theme.colors.secondary, theme.colors.tertiary, theme.colors.error, theme.colors.surfaceVariant],
+    },
+  };
+
+  const renderChart = (chartData: ChartData, index: number) => {
+    // Prepare data for Victory charts
+    let victoryData: any[] = [];
+    if (chartData.data && chartData.data.labels && chartData.data.datasets && chartData.data.datasets[0]) {
+      victoryData = chartData.data.labels.map((label: string, i: number) => ({
+        x: label,
+        y: chartData.data.datasets[0].data[i],
+        // Include color if available for pie charts
+        ...(chartData.type === 'pie' && chartData.data.datasets[0].colors && { fill: chartData.data.datasets[0].colors[i] }),
+      }));
+    }
+
+    const chartHeight = 250;
 
     switch (chartData.type) {
       case 'bar':
         return (
           <View key={`chart-${index}`} style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>{chartData.title}</Text>
-            <BarChart
-              data={chartData.data}
+            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>{chartData.title}</Text>
+            <VictoryChart
+              theme={victoryTheme}
               width={screenWidth}
-              height={220}
-              chartConfig={chartConfig}
-              verticalLabelRotation={30}
-              fromZero
-              showValuesOnTopOfBars
-              yAxisLabel=""
-              yAxisSuffix=""
-            />
+              height={chartHeight}
+              domainPadding={{ x: 20 }}
+            >
+              <VictoryAxis dependentAxis gridComponent={<></>} />
+              <VictoryAxis tickLabelComponent={<VictoryLabel angle={-30} textAnchor="end" />} />
+              <VictoryBar data={victoryData} labels={({ datum }) => datum.y} />
+            </VictoryChart>
           </View>
         );
       case 'line':
         return (
           <View key={`chart-${index}`} style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>{chartData.title}</Text>
-            <LineChart
-              data={chartData.data}
+            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>{chartData.title}</Text>
+            <VictoryChart
+              theme={victoryTheme}
               width={screenWidth}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              yAxisLabel=""
-              yAxisSuffix=""
-            />
+              height={chartHeight}
+              domainPadding={{ y: 10 }}
+            >
+              <VictoryAxis dependentAxis gridComponent={<></>} />
+              <VictoryAxis />
+              <VictoryLine data={victoryData} />
+            </VictoryChart>
           </View>
         );
       case 'pie':
-        // Format data for PieChart
-        const pieData = chartData.data.labels.map((label: string, i: number) => ({
-          name: label,
-          population: chartData.data.datasets[0].data[i],
-          color: chartData.data.datasets[0].colors[i],
-          legendFontColor: '#7F7F7F',
-          legendFontSize: 12
+        // Prepare data specifically for VictoryPie (x is often nominal, y is the value)
+        const pieVictoryData = chartData.data.labels.map((label: string, i: number) => ({
+          x: label, // Use label as x
+          y: chartData.data.datasets[0].data[i], // Value
+          label: `${label}\n(${chartData.data.datasets[0].data[i]})`, // Combine label and value for display
+          fill: chartData.data.datasets[0].colors ? chartData.data.datasets[0].colors[i] : undefined // Use provided color
         }));
-        
+
         return (
           <View key={`chart-${index}`} style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>{chartData.title}</Text>
-            <PieChart
-              data={pieData}
+            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>{chartData.title}</Text>
+            <VictoryPie
+              data={pieVictoryData}
               width={screenWidth}
-              height={220}
-              chartConfig={chartConfig}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
+              height={chartHeight}
+              theme={victoryTheme}
+              colorScale={chartData.data.datasets[0].colors || victoryTheme.pie.colorScale} // Use provided colors or theme colors
+              innerRadius={50} // Example: create a donut chart
+              // Fix: Ensure innerRadius is treated as a number before adding
+              labelRadius={({ innerRadius }) => (typeof innerRadius === 'number' ? innerRadius : 50) + 30} // Adjust label positioning
+              style={{ labels: { fill: theme.colors.onSurface, fontSize: 10 } }}
             />
           </View>
         );
@@ -105,37 +172,36 @@ const AnalysisWidget: React.FC<AnalysisWidgetProps> = ({ data }) => {
   };
 
   return (
-    <Card style={styles.container}>
-      <Card.Title title={data.title} />
+    <Card style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      <Card.Title title={data.title} titleStyle={{ color: theme.colors.onSurface }} />
       <Card.Content>
-        {/* Display markdown content if available */}
         {data.content && (
           <ScrollView style={styles.markdownContainer}>
-            <Markdown>{data.content}</Markdown>
+            <Markdown style={{ body: { color: theme.colors.onSurface } }}>{data.content}</Markdown>
           </ScrollView>
         )}
-        
-        <Text style={styles.summary}>{data.summary}</Text>
-        
-        <Divider style={styles.divider} />
-        
-        {/* Charts display */}
+
+        <Text style={[styles.summary, { color: theme.colors.onSurfaceVariant }]}>{data.summary}</Text>
+
+        <Divider style={[styles.divider, { backgroundColor: theme.colors.outline }]} />
+
         {data.charts && data.charts.length > 0 && (
-          <ScrollView 
-            horizontal={false} 
+          <ScrollView
+            horizontal={false}
             style={styles.chartsSection}
             showsVerticalScrollIndicator={false}
           >
             {data.charts.map((chart, index) => renderChart(chart, index))}
           </ScrollView>
         )}
-        
-        <Text style={styles.insightsTitle}>{t('key_insights')}</Text>
+
+        <Text style={[styles.insightsTitle, { color: theme.colors.onSurface }]}>{t('key_insights')}</Text>
         {data.insights.map((insight, index) => (
           <List.Item
             key={`insight-${index}`}
             title={insight}
-            left={props => <List.Icon {...props} icon="chart-line" />}
+            titleStyle={{ color: theme.colors.onSurfaceVariant }}
+            left={props => <List.Icon {...props} icon="chart-line" color={theme.colors.primary} />}
             titleNumberOfLines={2}
           />
         ))}
