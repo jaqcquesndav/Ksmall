@@ -1,0 +1,127 @@
+/**
+ * Solutions pour les problèmes liés à Jimp dans React Native
+ * Ce fichier contient des correctifs et des polyfills pour que Jimp fonctionne dans React Native
+ */
+
+console.log('[JimpFix] Initialisation des polyfills pour Jimp...');
+
+/**
+ * Polyfill pour les modules Node.js manquants dans React Native
+ * Cette fonction crée de faux modules pour satisfaire les dépendances de Jimp
+ */
+export function setupNodePolyfills() {
+  try {
+    // Créer un faux module fs pour Jimp
+    if (!global.process) {
+      global.process = require('process/browser');
+    }
+    
+    if (!global.__JIMP_POLYFILLS_APPLIED__) {
+      // Appliquer les polyfills uniquement une fois
+      
+      // Mock pour le module fs
+      const mockFs = {
+        readFileSync: (path) => {
+          console.warn('[JimpFix] Tentative de lecture de fichier FS interceptée:', path);
+          // Retourner un buffer vide
+          return Buffer.from([]);
+        },
+        existsSync: (path) => {
+          console.warn('[JimpFix] Vérification d\'existence de fichier FS interceptée:', path);
+          return false;
+        },
+        writeFileSync: (path, data) => {
+          console.warn('[JimpFix] Tentative d\'écriture de fichier FS interceptée:', path);
+          return;
+        }
+      };
+      
+      // Créer de faux modules pour les imports problématiques
+      if (!global.__REACT_NATIVE_POLYFILLS__) {
+        global.__REACT_NATIVE_POLYFILLS__ = {};
+      }
+      
+      // Enregistrer le module fs simulé
+      global.__REACT_NATIVE_POLYFILLS__.fs = mockFs;
+      
+      // Précharger d'autres modules problématiques potentiels
+      const mockModules = {
+        fs: mockFs,
+        path: require('path-browserify'),
+        stream: require('readable-stream'),
+        zlib: {
+          inflate: () => Buffer.from([]),
+          deflate: () => Buffer.from([])
+        }
+      };
+      
+      // Polyfill pour require qui intercepte les modules Node.js problématiques
+      const originalRequire = global.require || ((module) => { throw new Error(`Cannot find module '${module}'`); });
+      
+      // Sauvegarde de l'original si ce n'est pas déjà fait
+      if (!global.__ORIGINAL_REQUIRE__) {
+        global.__ORIGINAL_REQUIRE__ = originalRequire;
+      }
+      
+      // Remplacer require par notre version qui gère les modules Node.js
+      global.require = function(moduleName) {
+        if (mockModules[moduleName]) {
+          console.log(`[JimpFix] Module Node.js "${moduleName}" fourni par polyfill`);
+          return mockModules[moduleName];
+        }
+        
+        if (moduleName === 'jimp-compact' || moduleName.includes('jimp')) {
+          console.log('[JimpFix] Tentative de chargement de Jimp détectée, application des polyfills...');
+          
+          try {
+            // Essayer de charger avec le require original
+            const jimpModule = global.__ORIGINAL_REQUIRE__(moduleName);
+            
+            // Si nous avons réussi à charger Jimp, patcher certaines méthodes problématiques
+            if (jimpModule && jimpModule.prototype) {
+              // Patcher les méthodes qui utilisent fs
+              const methods = ['resize', 'quality', 'deflateLevel', 'write', 'writeAsync', 'getBuffer'];
+              
+              methods.forEach(method => {
+                if (jimpModule.prototype[method]) {
+                  const original = jimpModule.prototype[method];
+                  jimpModule.prototype[method] = function(...args) {
+                    try {
+                      return original.apply(this, args);
+                    } catch (e) {
+                      console.warn(`[JimpFix] Erreur interceptée dans Jimp.${method}:`, e.message);
+                      return this; // Retourner l'image actuelle pour permettre le chaînage
+                    }
+                  };
+                }
+              });
+            }
+            
+            return jimpModule;
+          } catch (e) {
+            console.warn('[JimpFix] Échec du chargement de Jimp:', e.message);
+            // Retourner un module Jimp simulé minimal
+            return {
+              read: () => Promise.resolve({}),
+              create: () => Promise.resolve({}),
+            };
+          }
+        }
+        
+        // Pour tous les autres modules, utiliser le require original
+        return global.__ORIGINAL_REQUIRE__(moduleName);
+      };
+      
+      global.__JIMP_POLYFILLS_APPLIED__ = true;
+      console.log('[JimpFix] Polyfills pour Jimp appliqués avec succès');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('[JimpFix] Erreur lors de la configuration des polyfills:', error);
+    return false;
+  }
+}
+
+// Appliquer les polyfills immédiatement lors de l'importation
+setupNodePolyfills();

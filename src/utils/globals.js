@@ -21,8 +21,17 @@ if (typeof global.crypto.getRandomValues !== 'function') {
 global.Buffer = global.Buffer || Buffer;
 
 // Autres polyfills qui pourraient être nécessaires
-global.process = global.process || require('process/browser');
-global.process.env = global.process.env || {};
+// Utiliser implémentation directe au lieu de require('process/browser')
+if (typeof global.process !== 'object') {
+  global.process = {
+    env: {},
+    nextTick: function(cb) { setTimeout(cb, 0); },
+    domain: null,
+    browser: true
+  };
+} else if (!global.process.env) {
+  global.process.env = {};
+}
 
 // Polyfill pour btoa et atob (utilisé par certains modules)
 if (typeof global.btoa !== 'function') {

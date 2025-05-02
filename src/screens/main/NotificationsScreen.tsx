@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ThemeContext } from '../../context/ThemeContext';
+import { useThemeContext } from '../../context/ThemeContext';
 import { UINotification, NOTIFICATION_TYPES } from '../../types/notification';
 
+// Utiliser l'import ES Modules au lieu de require()
+import emptyNotificationsImage from '../../../assets/empty-notifications.png';
+
 const NotificationsScreen = () => {
-  const { theme } = useContext(ThemeContext);
+  const { theme } = useThemeContext();
   const [notifications, setNotifications] = useState<UINotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
@@ -248,7 +251,7 @@ const NotificationsScreen = () => {
       ) : (
         <View style={styles.emptyContainer}>
           <Image 
-            source={require('../../../assets/empty-notifications.png')} 
+            source={emptyNotificationsImage} 
             style={styles.emptyImage}
             resizeMode="contain"
           />

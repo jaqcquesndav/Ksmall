@@ -6,6 +6,7 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 const os = require('os');
+const nodeLibs = require('node-libs-react-native');
 
 // Create default config
 const config = getDefaultConfig(__dirname);
@@ -17,12 +18,15 @@ config.resolver.sourceExts = [
 
 // Important polyfills for offline functionality
 config.resolver.extraNodeModules = {
-  ...require('node-libs-react-native'),
+  ...nodeLibs,
   'crypto': path.resolve(__dirname, 'node_modules/react-native-crypto'),
   'stream': path.resolve(__dirname, 'node_modules/readable-stream'),
   'vm': path.resolve(__dirname, 'node_modules/vm-browserify'),
   'process': path.resolve(__dirname, 'node_modules/process'),
   'buffer': path.resolve(__dirname, 'node_modules/buffer'),
+  'path': path.resolve(__dirname, 'node_modules/path-browserify'),
+  'fs': path.resolve(__dirname, 'src/utils/fs-mock.js'), // Mock pour le module fs
+  'zlib': path.resolve(__dirname, 'src/utils/zlib-mock.js'), // Mock pour zlib
 };
 
 // Priorité aux polyfills importants

@@ -1,6 +1,6 @@
 // Local build script to help diagnose build problems
-const fs = require('fs');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import { execSync } from 'child_process';
 
 function runCommand(command) {
   console.log(`Running: ${command}`);

@@ -1,10 +1,7 @@
 /**
  * hermes-polyfills.js - Solution spécifique pour Expo Go avec Hermes
- * Ce fichier corrige l'erreur : [runtime not ready]: ReferenceError: Property 'require' doesn't exist
+ * Version compatible ES Modules sans référence à require
  */
-
-// ATTENTION: N'utilisez pas import/export dans ce fichier!
-// Ce fichier doit fonctionner avec une inclusion simple sans dépendre de require/import
 
 // Cache global pour les modules polyfills
 var _hermesModuleCache = {};
@@ -28,52 +25,11 @@ var _hermesModuleCache = {};
         return;
       }
       
-      // Créer un polyfill pour require() compatible avec Hermes
-      if (typeof global.require === 'undefined') {
-        global.require = function(id) {
-          // Vérifier si nous avons déjà ce module en cache
-          if (_hermesModuleCache[id]) {
-            return _hermesModuleCache[id];
-          }
-          
-          // Polyfills pour des modules standards
-          var moduleContent = {};
-          
-          // Module 'process'
-          if (id === 'process') {
-            moduleContent = global.process || {
-              env: { NODE_ENV: __DEV__ ? 'development' : 'production' },
-              nextTick: function(cb) { setTimeout(cb, 0); },
-              domain: null
-            };
-            global.process = moduleContent; // S'assurer que global.process existe aussi
-          }
-          
-          // Module 'path'
-          else if (id === 'path') {
-            moduleContent = {
-              join: function() {
-                return Array.prototype.slice.call(arguments).join('/').replace(/\/+/g, '/');
-              },
-              resolve: function(p) { return p; },
-              dirname: function(p) {
-                var parts = p.split('/');
-                parts.pop();
-                return parts.join('/');
-              }
-            };
-          }
-          
-          // Module 'crypto' minimal
-          else if (id === 'crypto') {
-            moduleContent = { randomBytes: function() { return new Uint8Array(16); } };
-          }
-          
-          // Stocker en cache et retourner
-          _hermesModuleCache[id] = moduleContent;
-          return moduleContent;
-        };
-      }
+      // IMPORTANT: Ne pas essayer de créer un polyfill pour require()
+      // C'est ce qui cause l'erreur "Property 'require' doesn't exist"
+      // Au lieu de cela, utiliser des alternatives comme l'importation dynamique
+      
+      // Mettre à disposition les fonctionnalités nécessaires directement dans l'environnement global
       
       // Garantir que process existe et a les propriétés minimales nécessaires
       if (typeof global.process === 'undefined') {
@@ -88,6 +44,19 @@ var _hermesModuleCache = {};
       if (typeof global.process.nextTick === 'undefined') {
         global.process.nextTick = function(cb) { setTimeout(cb, 0); };
       }
+      
+      // Ajouter des utilitaires courants directement disponibles globalement
+      global.__pathUtils = {
+        join: function() {
+          return Array.prototype.slice.call(arguments).join('/').replace(/\/+/g, '/');
+        },
+        resolve: function(p) { return p; },
+        dirname: function(p) {
+          var parts = p.split('/');
+          parts.pop();
+          return parts.join('/');
+        }
+      };
       
       // Ajouter un indicateur global pour signaler que le runtime est prêt
       global.__RUNTIME_READY__ = true;

@@ -18,17 +18,25 @@ const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
   const { t } = useTranslation();
   const [formValues, setFormValues] = useState<CompanyInfo>({
     name: initialValues?.name || '',
-    address: initialValues?.address || '',
+    legalForm: initialValues?.legalForm || '',
     registrationNumber: initialValues?.registrationNumber || '',
     taxId: initialValues?.taxId || '',
+    idNat: initialValues?.idNat || '',
+    cnssNumber: initialValues?.cnssNumber || '',
+    inppNumber: initialValues?.inppNumber || '',
+    patentNumber: initialValues?.patentNumber || '',
     phone: initialValues?.phone || '',
     email: initialValues?.email || '',
-    logo: initialValues?.logo || ''
+    address: initialValues?.address || {
+      street: '',
+      city: '',
+      country: ''
+    }
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  const handleChange = (field: keyof CompanyInfo, value: string) => {
+  const handleChange = (field: keyof CompanyInfo, value: string | { street: string; city: string; postalCode?: string; country: string; }) => {
     setFormValues(prev => ({
       ...prev,
       [field]: value
@@ -50,7 +58,7 @@ const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
       newErrors.name = t('field_required');
     }
     
-    if (!formValues.address) {
+    if (!formValues.address.street) {
       newErrors.address = t('field_required');
     }
     
@@ -89,14 +97,11 @@ const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
       {errors.name && <HelperText type="error">{errors.name}</HelperText>}
       
       <TextInput
-        label={t('address')}
-        value={formValues.address}
-        onChangeText={(value) => handleChange('address', value)}
+        label={t('legal_form')}
+        value={formValues.legalForm}
+        onChangeText={(value) => handleChange('legalForm', value)}
         style={styles.input}
-        error={!!errors.address}
-        multiline
       />
-      {errors.address && <HelperText type="error">{errors.address}</HelperText>}
       
       <TextInput
         label={t('registration_number')}
@@ -119,6 +124,34 @@ const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
       {errors.taxId && <HelperText type="error">{errors.taxId}</HelperText>}
       
       <TextInput
+        label={t('id_nat')}
+        value={formValues.idNat}
+        onChangeText={(value) => handleChange('idNat', value)}
+        style={styles.input}
+      />
+      
+      <TextInput
+        label={t('cnss_number')}
+        value={formValues.cnssNumber}
+        onChangeText={(value) => handleChange('cnssNumber', value)}
+        style={styles.input}
+      />
+      
+      <TextInput
+        label={t('inpp_number')}
+        value={formValues.inppNumber}
+        onChangeText={(value) => handleChange('inppNumber', value)}
+        style={styles.input}
+      />
+      
+      <TextInput
+        label={t('patent_number')}
+        value={formValues.patentNumber}
+        onChangeText={(value) => handleChange('patentNumber', value)}
+        style={styles.input}
+      />
+      
+      <TextInput
         label={t('phone')}
         value={formValues.phone}
         onChangeText={(value) => handleChange('phone', value)}
@@ -135,6 +168,29 @@ const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
         keyboardType="email-address"
       />
       {errors.email && <HelperText type="error">{errors.email}</HelperText>}
+      
+      <TextInput
+        label={t('street')}
+        value={formValues.address.street}
+        onChangeText={(value) => handleChange('address', { ...formValues.address, street: value })}
+        style={styles.input}
+        error={!!errors.address}
+      />
+      {errors.address && <HelperText type="error">{errors.address}</HelperText>}
+      
+      <TextInput
+        label={t('city')}
+        value={formValues.address.city}
+        onChangeText={(value) => handleChange('address', { ...formValues.address, city: value })}
+        style={styles.input}
+      />
+      
+      <TextInput
+        label={t('country')}
+        value={formValues.address.country}
+        onChangeText={(value) => handleChange('address', { ...formValues.address, country: value })}
+        style={styles.input}
+      />
       
       <View style={styles.buttonContainer}>
         <Button onPress={onCancel} style={styles.button}>

@@ -3,20 +3,42 @@
  * Implémente une stratégie d'initialisation robuste pour le mode offline-first
  */
 
-// Technique d'interception d'erreur pour le runtime Hermes
-try {
-  // Protection pour les environnements avec le moteur Hermes
-  if (typeof global !== 'undefined' && typeof global.HermesInternal !== 'undefined') {
-    // Sécuriser l'accès à require pour Hermes
-    if (typeof global.require === 'undefined' && typeof __r === 'function') {
-      global.require = __r;
-    }
-  }
-} catch (e) {
-  // Ignorer les erreurs à ce stade, elles seront gérées par pre-init
-}
+// PRIORITÉ ABSOLUE: Importer le patch Jimp en tout premier
+// Compatible avec ES Modules et Hermes
+import './src/utils/jimpPatcher.js';
 
-// IMPORTANT: Importer le pré-init avant tout autre module
+// IMPORTANT: Ne rien faire avant ce bloc de sécurisation du runtime Hermes
+(function secureHermesRuntime() {
+  try {
+    // Polyfill pour global si nécessaire
+    if (typeof global === 'undefined' && typeof window !== 'undefined') {
+      window.global = window;
+    }
+    
+    // Vérifier si nous sommes dans un environnement Hermes
+    const isHermes = () => !!global.HermesInternal;
+    
+    if (isHermes()) {
+      console.log('Environnement Hermes détecté - Initialisation de sécurité');
+      
+      // Marquer l'environnement Hermes comme sécurisé sans utiliser require
+      global.__HERMES_ENVIRONMENT_SECURED__ = true;
+      
+      // Assurer que process est défini pour éviter des erreurs courantes
+      if (!global.process) {
+        global.process = {
+          env: {},
+          nextTick: (callback) => setTimeout(callback, 0),
+          domain: null
+        };
+      }
+    }
+  } catch (err) {
+    console.error('Erreur lors de la sécurisation du runtime:', err);
+  }
+})();
+
+// IMPORTANT: Importer le pré-init après la sécurisation de Hermes
 import './src/utils/pre-init';
 
 // Imports fondamentaux

@@ -3,6 +3,8 @@ import { generateUniqueId } from '../utils/helpers';
 import logger from '../utils/logger';
 import DatabaseService from './DatabaseService';
 import { accountingMockData } from '../data/accountingMockData';
+// Importer les données mock directement en ES Modules plutôt qu'avec require()
+import { transactionsMockData } from '../data/transactionsMockData';
 import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -146,7 +148,6 @@ class AccountingService {
       
       // 3. Si aucune transaction n'est trouvée, utiliser les données mock
       if (transactions.length === 0) {
-        const { transactionsMockData } = require('../data/transactionsMockData');
         transactions = transactionsMockData.map((transaction: any) => ({
           id: transaction.id,
           date: transaction.date,
@@ -254,8 +255,6 @@ class AccountingService {
       // 3. Si toujours non trouvé, chercher dans les données mock
       if (!transaction) {
         logger.debug("Transaction non trouvée dans la base de données, recherche dans les données mock");
-        // Importer directement les données mock
-        const { transactionsMockData } = require('../data/transactionsMockData');
         
         // Chercher par ID dans les données mock
         const mockTransaction = transactionsMockData.find(t => t.id === id);

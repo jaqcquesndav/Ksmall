@@ -1,15 +1,11 @@
 /**
  * This file helps ensure that React Native core modules are properly initialized
- * It solves the "react-native_librairies_core_initializeCore" error and "domain" undefined errors
+ * Version compatible avec Hermes - sans require()
  */
 
-// Import global polyfills first - mais de manière sécurisée
-try {
-  require('node-libs-react-native/globals');
-} catch (e) {
-  console.warn('Impossible de charger les polyfills globaux:', e.message);
-}
-
+// Importer les polyfills avec ES Modules plutôt que require()
+import 'node-libs-react-native/globals';
+import { Buffer as BufferPolyfill } from 'buffer';
 import { Text, AppRegistry } from 'react-native';
 
 // Make sure Text component gets registered early (prevents another common error)
@@ -42,7 +38,8 @@ if (global.process && typeof global.process.domain === 'undefined') {
 // Ensure global Buffer is available - with error handling for Hermes
 if (typeof global.Buffer === 'undefined') {
   try {
-    global.Buffer = require('buffer').Buffer;
+    // Utiliser l'import ES Modules plutôt que require()
+    global.Buffer = BufferPolyfill;
   } catch (e) {
     // Fournir une implémentation minimale du Buffer
     global.Buffer = {

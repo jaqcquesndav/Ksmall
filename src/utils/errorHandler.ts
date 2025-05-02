@@ -80,33 +80,40 @@ export const logErrorToFile = async (error: any, componentInfo?: string) => {
  * Gestionnaire global pour les erreurs non gérées
  */
 export const setupErrorHandling = () => {
-  // Intercepte les erreurs globales
-  const ErrorUtils = global.ErrorUtils || require('react-native').ErrorUtils;
-  const originalErrorHandler = ErrorUtils.getGlobalHandler();
+  // Intercepte les erreurs globales sans utiliser require
+  // Accéder directement à ErrorUtils depuis global
+  const ErrorUtils = global.ErrorUtils || (Platform.OS === 'android' ? global.ErrorUtils : null);
   
-  ErrorUtils.setGlobalHandler((error, isFatal) => {
-    logger.error(`UNCAUGHT ERROR: ${isFatal ? 'FATAL' : 'NON-FATAL'}`, error);
-    logErrorToFile(error, 'GlobalErrorHandler');
+  if (ErrorUtils) {
+    const originalErrorHandler = ErrorUtils.getGlobalHandler();
     
-    // Gérer l'erreur avec notre système
-    handleError({
-      type: ErrorType.UNKNOWN,
-      message: error.message || 'Erreur inconnue',
-      timestamp: Date.now(),
-      data: { stack: error.stack },
-      retryable: false
+    ErrorUtils.setGlobalHandler((error, isFatal) => {
+      logger.error(`UNCAUGHT ERROR: ${isFatal ? 'FATAL' : 'NON-FATAL'}`, error);
+      logErrorToFile(error, 'GlobalErrorHandler');
+      
+      // Gérer l'erreur avec notre système
+      handleError({
+        type: ErrorType.UNKNOWN,
+        message: error.message || 'Erreur inconnue',
+        timestamp: Date.now(),
+        data: { stack: error.stack },
+        retryable: false
+      });
+      
+      if (isFatal && __DEV__) {
+        Alert.alert(
+          'Erreur critique',
+          `Une erreur critique s'est produite: ${error.message}\n\nConsultez la console pour plus de détails.`,
+        );
+      }
+      
+      // Appeler le gestionnaire d'erreur original
+      originalErrorHandler(error, isFatal);
     });
-    
-    if (isFatal && __DEV__) {
-      Alert.alert(
-        'Erreur critique',
-        `Une erreur critique s'est produite: ${error.message}\n\nConsultez la console pour plus de détails.`,
-      );
-    }
-    
-    // Appeler le gestionnaire d'erreur original
-    originalErrorHandler(error, isFatal);
-  });
+  } else {
+    // Fallback si ErrorUtils n'est pas disponible
+    logger.warn('ErrorUtils global non disponible, impossible de configurer le gestionnaire d\'erreurs global');
+  }
   
   // Configurer la surveillance de l'état du réseau
   setupNetworkListener();

@@ -1,6 +1,6 @@
 /**
- * Ce script automatise la création d'un APK pour l'application KSmall
- * en contournant les problèmes courants rencontrés avec EAS Build.
+ * Script pour construire une APK indépendamment d'EAS
+ * Ceci permet de générer une APK de test localement.
  */
 
 const { execSync } = require('child_process');
@@ -17,6 +17,11 @@ const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
 };
+
+// Configuration
+const ANDROID_DIR = path.join(process.cwd(), 'android');
+const OUTPUT_DIR = path.join(process.cwd(), 'apk');
+const GRADLE_CMD = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
 
 // Fonction pour exécuter des commandes avec log
 function runCommand(command, message) {

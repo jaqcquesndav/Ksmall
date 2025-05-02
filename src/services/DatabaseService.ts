@@ -553,6 +553,68 @@ class DatabaseService {
       return { isOpen: false };
     }
   }
+
+  /**
+   * Obtenir les données critiques pour un démarrage rapide
+   * @returns Les données critiques nécessaires au démarrage rapide
+   */
+  static async getCriticalData(): Promise<any> {
+    try {
+      const db = await this.getDatabase();
+      
+      // Récupérer les données de profil d'entreprise
+      const [companyResult] = await this.executeQuery(
+        db,
+        "SELECT * FROM company_profile LIMIT 1",
+        []
+      );
+      
+      // Récupérer les données de profil utilisateur
+      const [userResult] = await this.executeQuery(
+        db,
+        "SELECT * FROM user_profile LIMIT 1",
+        []
+      );
+      
+      const company = companyResult?.rows?.length > 0 ? companyResult.rows.item(0) : null;
+      const user = userResult?.rows?.length > 0 ? userResult.rows.item(0) : null;
+      
+      return {
+        company,
+        user,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des données critiques:', error);
+      return {
+        timestamp: Date.now()
+      };
+    }
+  }
+  
+  /**
+   * Synchroniser les données essentielles
+   * Cette méthode est utilisée pour une synchronisation légère lors de la réactivation de l'application
+   */
+  static async syncEssentialData(): Promise<void> {
+    try {
+      logger.info('Synchronisation des données essentielles');
+      
+      // Vérifier que la base de données est initialisée
+      const status = await this.getStatus();
+      if (!status.isOpen) {
+        await this.initializeLazy();
+      }
+      
+      // Logique de synchronisation ici
+      // Pour l'instant, c'est juste un placeholder
+      
+      logger.info('Synchronisation des données essentielles terminée');
+    } catch (error) {
+      logger.error('Erreur lors de la synchronisation des données essentielles:', error);
+      // Ne pas faire échouer l'application, simplement logger l'erreur
+    }
+  }
 }
 
 export default DatabaseService;

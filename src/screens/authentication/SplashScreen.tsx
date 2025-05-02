@@ -2,13 +2,13 @@ import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useContext } from 'react';
-import { ThemeContext } from '../../context/ThemeContext';
+import { useThemeContext } from '../../context/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
+import logoImage from '../../../assets/logo.png';
 
 const SplashScreen = () => {
   const navigation = useNavigation();
-  const { theme } = useContext(ThemeContext);
+  const { theme } = useThemeContext();
 
   return (
     <LinearGradient
@@ -17,7 +17,7 @@ const SplashScreen = () => {
     >
       <StatusBar style="light" />
       <Image 
-        source={require('../../../assets/logo.png')} 
+        source={logoImage} 
         style={styles.logo}
         resizeMode="contain"
       />

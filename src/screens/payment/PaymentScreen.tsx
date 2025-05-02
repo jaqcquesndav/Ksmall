@@ -18,6 +18,19 @@ import { ActivityIndicator } from 'react-native-paper';
 import useCurrency from '../../hooks/useCurrency';
 import { validateNumeric } from '../../utils/validation';
 
+// Imports ES Modules pour les icônes de paiement
+import orangeMoneyIcon from '../../../assets/orange-money-icon.png';
+import mtnMomoIcon from '../../../assets/mtn-momo-icon.png';
+import mpesaIcon from '../../../assets/mpesa-icon.png';
+import cashIcon from '../../../assets/cash-icon.png';
+
+const paymentMethods = [
+  { id: 'orange_money', name: 'Orange Money', icon: orangeMoneyIcon },
+  { id: 'mtn_momo', name: 'MTN Mobile Money', icon: mtnMomoIcon },
+  { id: 'mpesa', name: 'M-Pesa', icon: mpesaIcon },
+  { id: 'cash', name: 'Cash', icon: cashIcon },
+];
+
 const PaymentScreen = () => {
   const navigation = useNavigation();
   const theme = useTheme();
@@ -29,13 +42,6 @@ const PaymentScreen = () => {
   const [selectedMethod, setSelectedMethod] = useState('');
   const [errors, setErrors] = useState({ amount: '', recipient: '' });
   const [processing, setProcessing] = useState(false);
-
-  const paymentMethods = [
-    { id: 'orange_money', name: 'Orange Money', icon: require('../../../assets/orange-money-icon.png') },
-    { id: 'mtn_momo', name: 'MTN Mobile Money', icon: require('../../../assets/mtn-momo-icon.png') },
-    { id: 'mpesa', name: 'M-Pesa', icon: require('../../../assets/mpesa-icon.png') },
-    { id: 'cash', name: 'Cash', icon: require('../../../assets/cash-icon.png') },
-  ];
 
   // Fonction de formatage pour l'entrée de montant
   const handleAmountChange = useCallback((text: string) => {

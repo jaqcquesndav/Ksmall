@@ -15,9 +15,10 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 interface AppLoaderProps {
   children: React.ReactNode;
+  initialData?: any;
 }
 
-const AppLoader = ({ children }: AppLoaderProps) => {
+const AppLoader = ({ children, initialData }: AppLoaderProps) => {
   const [isReady, setIsReady] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [progress, setProgress] = useState(0);
@@ -35,6 +36,20 @@ const AppLoader = ({ children }: AppLoaderProps) => {
 
     async function prepare() {
       try {
+        // Si des données initiales sont disponibles, on peut accélérer le chargement
+        if (initialData) {
+          logger.info('Utilisation des données préchargées pour un démarrage rapide');
+          setProgress(0.8);
+          
+          // Attendre un court instant pour permettre le rendu de l'UI
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          if (isMounted) {
+            setIsReady(true);
+          }
+          return;
+        }
+        
         // Vérifier l'état du réseau au début
         const isNetworkAvailable = await networkUtils.isNetworkAvailable().catch(() => false);
         logger.info(`État du réseau au démarrage: ${isNetworkAvailable ? 'connecté' : 'déconnecté'}`);
