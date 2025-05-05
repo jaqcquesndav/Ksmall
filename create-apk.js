@@ -3,9 +3,9 @@
  * Ceci permet de générer une APK de test localement.
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 // Couleurs pour les logs
 const colors = {
@@ -41,7 +41,7 @@ async function buildApk() {
   console.log(`${colors.cyan}🚀 Démarrage de la génération de l'APK...${colors.reset}`);
 
   // 1. S'assurer que le dossier dist existe
-  const distDir = path.join(__dirname, 'dist');
+  const distDir = path.join(process.cwd(), 'dist');
   if (!fs.existsSync(distDir)) {
     fs.mkdirSync(distDir, { recursive: true });
   }

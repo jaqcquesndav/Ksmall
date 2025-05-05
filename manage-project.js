@@ -10,10 +10,10 @@
  *  - fix : Tente de résoudre les problèmes de connexion au serveur de développement
  */
 
-const { execSync, spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import { execSync, spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Couleurs pour la console
 const colors = {

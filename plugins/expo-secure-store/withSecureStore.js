@@ -1,11 +1,11 @@
-// Module de compatibilité pour expo-secure-store
+// Module de compatibilité pour expo-secure-store avec syntaxe ES6
 // Ce fichier aide à résoudre le problème d'importation ES6
 
-// Utilisation de require pour éviter les problèmes d'importation ES6
-const { withPlugins } = require('@expo/config-plugins');
+// Utilisation d'import au lieu de require
+import { withPlugins } from '@expo/config-plugins';
 
 /**
- * Plugin de configuration pour expo-secure-store qui évite les problèmes d'importation ES6
+ * Plugin de configuration pour expo-secure-store
  * @param {object} config - Configuration Expo
  * @returns {object} Configuration mise à jour
  */
@@ -25,5 +25,5 @@ function withSecureStore(config) {
   ]);
 }
 
-// Utiliser module.exports au lieu de export default pour la compatibilité
-module.exports = withSecureStore;
+// Utiliser export default au lieu de module.exports
+export default withSecureStore;

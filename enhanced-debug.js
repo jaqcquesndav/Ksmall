@@ -1,10 +1,10 @@
 // enhanced-debug.js
 // Script de diagnostic avancé pour les builds Android
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 
-const ANDROID_DIR = path.join(__dirname, 'android');
+const ANDROID_DIR = path.join(process.cwd(), 'android');
 
 // Fonction pour exécuter des commandes avec gestion d'erreurs
 function runCommand(command, options = {}) {
@@ -34,7 +34,7 @@ function checkProjectStructure() {
   ];
   
   requiredFiles.forEach(file => {
-    const filePath = path.join(__dirname, file);
+    const filePath = path.join(process.cwd(), file);
     if (fs.existsSync(filePath)) {
       console.log(`✅ ${file} existe`);
     } else {
@@ -51,7 +51,7 @@ function checkProjectStructure() {
   ];
   
   nodeModulePaths.forEach(modulePath => {
-    const fullPath = path.join(__dirname, modulePath);
+    const fullPath = path.join(process.cwd(), modulePath);
     if (fs.existsSync(fullPath)) {
       console.log(`✅ ${modulePath} existe`);
     } else {

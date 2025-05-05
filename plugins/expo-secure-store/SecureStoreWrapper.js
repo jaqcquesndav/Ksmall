@@ -1,5 +1,5 @@
-// Wrapper pour le module SecureStore utilisant la syntaxe CommonJS
-// Implémentation compatible avec l'environnement CommonJS
+// Wrapper pour le module SecureStore utilisant la syntaxe ES6
+// Implémentation compatible avec les modules ES
 
 // Créer une classe d'erreur personnalisée au lieu d'utiliser UnavailabilityError
 class UnavailabilityError extends Error {
@@ -13,8 +13,7 @@ class UnavailabilityError extends Error {
 let SecureStore;
 
 try {
-  // Au lieu d'importer directement le module qui utilise ES6, nous allons
-  // implémenter une version simplifiée du SecureStore
+  // Implémentation simplifiée du SecureStore
   SecureStore = {
     /**
      * Stocke une valeur associée à une clé dans le stockage sécurisé
@@ -73,4 +72,4 @@ try {
   };
 }
 
-module.exports = SecureStore;
+export default SecureStore;

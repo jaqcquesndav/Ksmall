@@ -1,32 +1,35 @@
 /**
  * Configuration Metro optimisée pour une application offline-first
- * Résout les problèmes de chargement et d'initialisation
+ * Format CommonJS pour permettre l'interopérabilité avec les scripts ES Modules
  */
 
-const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 const os = require('os');
+const { getDefaultConfig } = require('expo/metro-config');
 const nodeLibs = require('node-libs-react-native');
 
-// Create default config
-const config = getDefaultConfig(__dirname);
+// Obtenir la racine du projet
+const projectRoot = path.resolve(__dirname, '..');
+
+// Créer la configuration par défaut
+const config = getDefaultConfig(projectRoot);
 
 // Optimize bundling for offline-first
 config.resolver.sourceExts = [
-  'jsx', 'js', 'tsx', 'ts', 'mjs', 'cjs', 'json'
+  'jsx', 'js', 'tsx', 'ts', 'mjs', 'json'
 ];
 
 // Important polyfills for offline functionality
 config.resolver.extraNodeModules = {
   ...nodeLibs,
-  'crypto': path.resolve(__dirname, 'node_modules/react-native-crypto'),
-  'stream': path.resolve(__dirname, 'node_modules/readable-stream'),
-  'vm': path.resolve(__dirname, 'node_modules/vm-browserify'),
-  'process': path.resolve(__dirname, 'node_modules/process'),
-  'buffer': path.resolve(__dirname, 'node_modules/buffer'),
-  'path': path.resolve(__dirname, 'node_modules/path-browserify'),
-  'fs': path.resolve(__dirname, 'src/utils/fs-mock.js'), // Mock pour le module fs
-  'zlib': path.resolve(__dirname, 'src/utils/zlib-mock.js'), // Mock pour zlib
+  'crypto': path.resolve(projectRoot, 'node_modules/react-native-crypto'),
+  'stream': path.resolve(projectRoot, 'node_modules/readable-stream'),
+  'vm': path.resolve(projectRoot, 'node_modules/vm-browserify'),
+  'process': path.resolve(projectRoot, 'node_modules/process'),
+  'buffer': path.resolve(projectRoot, 'node_modules/buffer'),
+  'path': path.resolve(projectRoot, 'node_modules/path-browserify'),
+  'fs': path.resolve(projectRoot, 'src/utils/fs-mock.js'),
+  'zlib': path.resolve(projectRoot, 'src/utils/zlib-mock.js'),
 };
 
 // Priorité aux polyfills importants
@@ -34,6 +37,7 @@ config.resolver.resolverMainFields = [
   'react-native',
   'browser',
   'main',
+  'module'
 ];
 
 // Remove the blacklist configuration (now deprecated) and use blockList instead
@@ -41,12 +45,12 @@ delete config.resolver.blacklistRE;
 config.resolver.blockList = [/\.git\/.*/, /android\/.*\/build\/.*/];
 
 // Add all project folders to watchFolders
-config.watchFolders = [__dirname];
+config.watchFolders = [projectRoot];
 
 // Setup transformer with more memory and optimizations
 config.transformer = {
   ...config.transformer,
-  babelTransformerPath: require.resolve('metro-react-native-babel-transformer'),
+  babelTransformerPath: path.resolve(projectRoot, 'node_modules/metro-react-native-babel-transformer/src/index.js'),
   assetPlugins: ['expo-asset/tools/hashAssetFiles'],
   minifierConfig: {
     keep_classnames: true,
@@ -57,9 +61,7 @@ config.transformer = {
       reserved: ['require', 'global', '__r', 'process'],
     },
   },
-  // S'assurer que process.env est correctement géré
-  inlineRequires: false, // Désactivé pour éviter les problèmes avec require
-  // Ajouter les define plugins pour les variables globales
+  inlineRequires: false,
   globalDefines: {
     'process.env.NODE_ENV': process.env.NODE_ENV || 'development',
     '__OFFLINE_FIRST__': process.env.REACT_NATIVE_OFFLINE_MODE === 'true',
@@ -78,13 +80,13 @@ config.maxWorkers = Math.max(1, Math.min(cpuCount - 1, 4));
 config.serializer = {
   ...config.serializer,
   getModulesRunBeforeMainModule: () => [
-    require.resolve('./src/utils/pre-init'),
+    './src/utils/pre-init.js'
   ],
   createModuleIdFactory: () => {
     // Garantir que les modules critiques ont des IDs stables
     const criticalModules = {
-      './src/utils/pre-init': 0,
-      './index': 1,
+      './src/utils/pre-init.js': 0,
+      './index.js': 1,
     };
     
     return (path) => {
@@ -127,4 +129,9 @@ if (process.env.REACT_NATIVE_OFFLINE_MODE === 'true') {
   config.transformer.experimentalImportSupport = true;
 }
 
+// Ajouter plus de support pour ES modules
+config.resolver.unstable_enablePackageExports = true;
+config.resolver.unstable_conditionNames = ['import', 'require', 'react-native', 'browser', 'default'];
+
+// Exporter la configuration (format CommonJS)
 module.exports = config;

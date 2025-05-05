@@ -5,7 +5,7 @@
  */
 
 // Version minimale simulée du module fs
-module.exports = {
+const fs = {
   readFileSync: function(path) {
     console.log(`[fs-mock] readFileSync appelé pour: ${path}`);
     // Retourner un buffer vide au lieu de planter
@@ -95,3 +95,5 @@ module.exports = {
     X_OK: 1
   }
 };
+
+export default fs;

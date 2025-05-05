@@ -1,7 +1,7 @@
 // Plugin de configuration personnalisé pour expo-secure-store
-const { withAndroidManifest, withInfoPlist } = require('@expo/config-plugins');
-const withSecureStore = require('./withSecureStore.cjs');
-const SecureStoreAPI = require('./SecureStoreWrapper.cjs');
+import { withAndroidManifest, withInfoPlist } from '@expo/config-plugins';
+import withSecureStore from './withSecureStore.js';
+import SecureStoreAPI from './SecureStoreWrapper.js';
 
 // Ce module doit exporter une fonction de plugin par défaut pour être reconnu par Expo
 const withExpoSecureStore = (config) => {
@@ -41,11 +41,11 @@ const withExpoSecureStore = (config) => {
   return config;
 };
 
-// Expo recherche un export par défaut pour les plugins de configuration
-module.exports = withExpoSecureStore;
+// Export par défaut pour Expo (recherche un export par défaut pour les plugins de configuration)
+export default withExpoSecureStore;
 
-// API SecureStore exportée comme propriétés de l'exportation par défaut
-module.exports.setItemAsync = SecureStoreAPI.setItemAsync;
-module.exports.getItemAsync = SecureStoreAPI.getItemAsync;
-module.exports.deleteItemAsync = SecureStoreAPI.deleteItemAsync;
-module.exports.isAvailableAsync = SecureStoreAPI.isAvailableAsync;
+// API SecureStore exportée comme propriétés individuelles
+export const setItemAsync = SecureStoreAPI.setItemAsync;
+export const getItemAsync = SecureStoreAPI.getItemAsync;
+export const deleteItemAsync = SecureStoreAPI.deleteItemAsync;
+export const isAvailableAsync = SecureStoreAPI.isAvailableAsync;

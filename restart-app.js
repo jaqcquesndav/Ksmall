@@ -2,9 +2,9 @@
  * Script pour nettoyer le cache et redémarrer l'application
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 console.log('🧹 Nettoyage du cache et redémarrage...');
 
@@ -24,9 +24,9 @@ try {
   // Nettoyer les dossiers de cache Metro
   console.log('Suppression des caches...');
   const cacheDirs = [
-    path.join(__dirname, 'node_modules', '.cache'),
-    path.join(__dirname, '.expo'),
-    path.join(__dirname, '.metro')
+    path.join(process.cwd(), 'node_modules', '.cache'),
+    path.join(process.cwd(), '.expo'),
+    path.join(process.cwd(), '.metro')
   ];
 
   cacheDirs.forEach(dir => {

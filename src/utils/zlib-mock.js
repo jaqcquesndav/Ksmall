@@ -4,7 +4,7 @@
  * pour que les bibliothèques comme Jimp puissent fonctionner sans erreur
  */
 
-module.exports = {
+const zlib = {
   // Fonctions de compression
   deflate: function(buffer, callback) {
     console.log('[zlib-mock] deflate appelé');
@@ -61,3 +61,5 @@ module.exports = {
   Z_BEST_COMPRESSION: 9,
   Z_DEFAULT_COMPRESSION: -1
 };
+
+export default zlib;

@@ -1,0 +1,7 @@
+{
+  "general": {
+    "metro-config": "./metro.config.cjs",
+    "babel-config": "./babel.config.cjs",
+    "runtime": "hermes"
+  }
+}
