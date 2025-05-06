@@ -16,7 +16,9 @@
         "withoutCredentials": true
       },
       "env": {
-        "EXPO_SKIP_PREBUILD": "1"
+        "EXPO_DEBUG": "true",
+        "EXPO_SKIP_PREBUILD": "0",
+        "REACT_NATIVE_OFFLINE_MODE": "false"
       }
     },
     "production": {
@@ -26,14 +28,29 @@
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease",
-        "withoutCredentials": true
+        "withoutCredentials": true,
+        "image": "latest"
       },
       "env": {
-        "REACT_NATIVE_OFFLINE_MODE": "true"
+        "EXPO_DEBUG": "true",
+        "REACT_NATIVE_OFFLINE_MODE": "true",
+        "EXPO_SKIP_PREBUILD": "0"
       },
       "distribution": "internal",
       "ios": {
         "resourceClass": "m-medium"
+      }
+    },
+    "debug": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug",
+        "withoutCredentials": true
+      },
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_DEBUG": "true"
       }
     }
   },

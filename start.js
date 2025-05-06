@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Script de démarrage Expo optimisé pour Hermes
- * Solution utilisant un fichier .cjs pour résoudre le problème de compatibilité
- * tout en gardant les ES modules dans le runtime Hermes
+ * Script de démarrage Expo unifié
+ * Supporte à la fois le mode standard et le mode Hermes
+ * Compatible avec les environnements offline et online
  */
 
 import fs from 'fs';
@@ -22,11 +22,16 @@ const SUCCESS = '\x1b[32m%s\x1b[0m';  // Green
 const WARNING = '\x1b[33m%s\x1b[0m';  // Yellow
 const ERROR = '\x1b[31m%s\x1b[0m';  // Red
 
-console.log(INFO, '🚀 Initialisation du projet avec support ES modules pour Hermes...');
-
 // Récupérer les arguments de la ligne de commande
 const args = process.argv.slice(2);
-console.log(INFO, `📋 Arguments reçus: ${args.join(' ')}`);
+const modeArg = args.find(arg => arg.startsWith('--mode='));
+const mode = modeArg ? modeArg.split('=')[1] : 'standard';
+const cleanArgs = args.filter(arg => !arg.startsWith('--mode='));
+const isHermesMode = mode === 'hermes';
+const isOfflineMode = args.includes('--offline');
+
+console.log(INFO, `🚀 Initialisation du projet en mode ${isHermesMode ? 'HERMES' : 'STANDARD'}...`);
+console.log(INFO, `📋 Mode ${isOfflineMode ? 'OFFLINE' : 'ONLINE'} détecté`);
 
 // Fonction principale
 async function startExpo() {
@@ -50,17 +55,7 @@ async function startExpo() {
       console.error(ERROR, '❌ Erreur: Le fichier babel.config.cjs est introuvable');
       return 1;
     } else {
-      console.log(SUCCESS, '✅ Fichier babel.config.cjs trouvé, utilisation de celui-ci');
-    }
-    
-    // Sauvegarder l'ancienne configuration babel.config.js.bak si elle existe
-    try {
-      const oldBackupPath = path.resolve(__dirname, 'babel.config.js.bak');
-      if (fs.existsSync(oldBackupPath)) {
-        console.log(INFO, '🔄 Une sauvegarde précédente de babel.config.js existe déjà');
-      }
-    } catch (e) {
-      console.log(WARNING, '⚠️ Impossible de vérifier la sauvegarde de babel.config.js');
+      console.log(SUCCESS, '✅ Fichier babel.config.cjs trouvé');
     }
     
     // Supprimer toute variable d'environnement BABEL_CONFIG_FILE qui pourrait exister
@@ -70,38 +65,46 @@ async function startExpo() {
       console.log(WARNING, '⚠️ Variable BABEL_CONFIG_FILE trouvée et supprimée pour éviter les conflits');
     }
     
-    // Configurer les variables d'environnement
+    // Configurer les variables d'environnement de base
     const env = {
       ...cleanEnv,
       // Pointer vers le fichier .cjs pour que Metro puisse le charger correctement
       EXPO_METRO_CONFIG: metroConfigPath,
       // Définir explicitement le fichier de configuration Babel à utiliser
-      BABEL_CONFIG_FILE: path.resolve(__dirname, 'babel.config.cjs'),
+      BABEL_CONFIG_FILE: babelConfigCjsPath,
       EXPO_USE_METRO_WORKSPACE_ROOT: '1',
-      // Activer Hermes
-      REACT_NATIVE_USE_HERMES: '1',
-      REACT_NATIVE_ENABLE_HERMES_BYTECODE: '1'
+      // Définir le mode offline/online
+      REACT_NATIVE_OFFLINE_MODE: isOfflineMode ? 'true' : 'false'
     };
     
-    console.log(SUCCESS, '✅ Variables d\'environnement configurées');
-    
-    // Mode offline ou online
-    if (process.env.REACT_NATIVE_OFFLINE_MODE === 'true') {
-      console.log(INFO, '⚡ Mode OFFLINE activé - Optimisations pour mode hors-ligne');
+    // Ajouter des variables spécifiques au mode Hermes si nécessaire
+    if (isHermesMode) {
+      env.REACT_NATIVE_USE_HERMES = '1';
+      env.REACT_NATIVE_ENABLE_HERMES_BYTECODE = '1';
+      env.EXPO_USE_HERMES = '1';
+      console.log(SUCCESS, '✅ Variables d\'environnement Hermes configurées');
     } else {
-      console.log(INFO, '🌐 Mode ONLINE activé - Optimisations pour mode connecté');
+      // S'assurer que Hermes est désactivé en mode standard
+      env.REACT_NATIVE_USE_HERMES = '0';
+      env.EXPO_USE_HERMES = '0';
+      console.log(SUCCESS, '✅ Mode standard sans Hermes configuré');
     }
     
+    console.log(INFO, `🌐 Mode ${isOfflineMode ? 'OFFLINE' : 'ONLINE'} configuré`);
+    
     // Démarrer l'application avec Expo
-    console.log(INFO, '🚀 Démarrage de l\'application avec Hermes et ES modules...');
-    console.log(SUCCESS, '📦 Utilisation de la configuration Metro depuis metro.config.cjs');
-    console.log(SUCCESS, '📦 Utilisation de la configuration Babel depuis babel.config.cjs');
+    console.log(INFO, `🚀 Démarrage de l'application en mode ${isHermesMode ? 'Hermes' : 'Standard'}...`);
     
     // Ajout de l'option --clear pour nettoyer le cache si nécessaire
-    const finalArgs = [...args];
-    if (!args.includes('--clear') && args[0] === 'start') {
+    const finalArgs = [...cleanArgs];
+    if (!cleanArgs.includes('--clear') && (cleanArgs.length === 0 || cleanArgs[0] === 'start')) {
       console.log(INFO, '🧹 Ajout de l\'option --clear pour éviter les problèmes de cache');
       finalArgs.push('--clear');
+    }
+    
+    // Si aucun argument n'est fourni, ajouter 'start' par défaut
+    if (finalArgs.length === 0) {
+      finalArgs.unshift('start');
     }
     
     console.log(INFO, `📱 Lancement de la commande: npx expo ${finalArgs.join(' ')}`);
