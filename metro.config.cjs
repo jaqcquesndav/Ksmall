@@ -50,7 +50,8 @@ config.watchFolders = [projectRoot];
 // Configuration du transformer
 config.transformer = {
   ...config.transformer,
-  babelTransformerPath: path.resolve(projectRoot, 'node_modules/metro-react-native-babel-transformer/src/index.js'),
+  // Correction du chemin du transformateur
+  babelTransformerPath: require.resolve('metro-react-native-babel-transformer'),
   assetPlugins: ['expo-asset/tools/hashAssetFiles'],
   minifierConfig: {
     keep_classnames: true,

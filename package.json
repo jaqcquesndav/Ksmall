@@ -99,6 +99,7 @@
     "@types/react-redux": "^7.1.34",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "cross-env": "^7.0.3",
+    "metro-react-native-babel-transformer": "^0.77.0",
     "react-native-clean-project": "^4.0.3",
     "react-test-renderer": "^19.1.0"
   },
